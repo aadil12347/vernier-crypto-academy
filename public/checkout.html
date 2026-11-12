@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Checkout &amp; Upgrade Settlement — VERNIER</title>
+  <title>Whop Checkout — VERNIER</title>
   <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <link rel="stylesheet" href="/styles/tokens.css">
   <link rel="stylesheet" href="/styles/site.css">
@@ -17,21 +17,22 @@
       color: var(--muted); text-align: left; cursor: pointer; display: grid; gap: 4px;
     }
     .tier-pill.active { border-color: var(--accent); color: var(--ink); background: var(--surface-2); }
-    .rail-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 20px; }
-    .rail-btn {
-      padding: 10px 8px; border: 1px solid var(--rule); background: var(--ground); color: var(--muted);
-      font-family: var(--font-mono); font-size: 0.74rem; cursor: pointer; text-align: left;
-    }
-    .rail-btn.active { border-color: var(--accent); color: var(--ink); background: var(--surface-2); }
     .ledger-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 0.9rem; }
     .ledger-row.total { border-bottom: 0; font-size: 1.25rem; font-weight: 700; padding-top: 14px; }
     .rail-box { border: 1px solid var(--rule); background: var(--ground); padding: 18px; margin-top: 14px; }
+    .whop-frame-wrap {
+      margin-top: 14px;
+      border: 1px solid var(--rule-strong);
+      background: #0d1016;
+      padding: 12px;
+      min-height: 360px;
+    }
     .msg-banner { padding: 10px 14px; border: 1px solid var(--rule); margin-bottom: 14px; display: none; font-size: 0.88rem; }
     .msg-banner.show { display: block; }
     .msg-banner.err { border-color: var(--fail); color: #ffb5b5; background: var(--fail-soft); }
     .msg-banner.ok { border-color: var(--ok); color: #a8efd2; background: var(--ok-soft); }
     @media (max-width: 900px) { .ck-layout { grid-template-columns: 1fr; } }
-    @media (max-width: 680px) { .tier-selector, .rail-tabs { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 680px) { .tier-selector { grid-template-columns: repeat(2, 1fr); } }
   </style>
 </head>
 <body>
@@ -47,11 +48,11 @@
 
   <main class="ck-page">
     <div class="container">
-      <div class="spec-label"><span class="dot"></span><span>CHECKOUT HUB // SERVER-AUTHORITATIVE ENTITLEMENT</span></div>
-      <h1 class="display-lg" style="margin-top:8px;">Configure Package &amp; Settlement Rail</h1>
+      <div class="spec-label"><span class="dot"></span><span>WHOP CHECKOUT // FIREBASE-BACKED ENTITLEMENT</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">Configure Package &amp; Complete Payment</h1>
 
       <div class="ck-layout">
-        <!-- LEFT COLUMN: SELECTION + STUDENT IDENTITY + PAYMENT RAILS -->
+        <!-- LEFT COLUMN: PACKAGE + STUDENT IDENTITY + WHOP CHECKOUT -->
         <section class="spec-card" aria-label="Checkout configuration">
           <div id="ck-banner" class="msg-banner" role="status"></div>
 
@@ -85,51 +86,30 @@
               <label for="ck-password">Create Portal Password (Optional — Auto-generated if blank)</label>
               <input class="input-control" id="ck-password" type="password" placeholder="Set password for future /course login">
             </div>
+            <div style="grid-column:1 / -1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <button type="button" class="btn btn-commit" id="btn-lock-whop-session">Save Account &amp; Bind Order Ref</button>
+              <span class="mono" style="font-size:11px;color:var(--muted);">Optional: pre-binds your email and creates a tracked order reference before paying below.</span>
+            </div>
           </div>
 
-          <div class="spec-label" style="margin:22px 0 6px;">3 // CHOOSE PAYMENT RAIL</div>
-          <div class="rail-tabs" id="rail-tabs">
-            <button type="button" class="rail-btn active" data-provider="sandbox"><strong>SANDBOX TEST</strong><br><span>Approve / Decline</span></button>
-            <button type="button" class="rail-btn" data-provider="crypto_manual"><strong>CRYPTO DIRECT</strong><br><span>USDT / USDC / Zero Decline</span></button>
-            <button type="button" class="rail-btn" data-provider="local_pk"><strong>PK LOCAL RAILS</strong><br><span>PKR Bank / SadaPay</span></button>
-            <button type="button" class="rail-btn" data-provider="whop"><strong>GLOBAL CARDS (WHOP)</strong><br><span id="whop-tab-status">Phase 6 Plug</span></button>
-          </div>
-
-          <div class="rail-box" id="rail-details">
-            <div id="rail-sandbox-panel">
-              <div style="font-weight:600;">Developer Sandbox Card &amp; Webhook Simulator</div>
-              <p style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Test full SQLite order creation, instant tier unlocking, decline handling, or refund revocation right now with zero real money.</p>
-              <div style="display:flex;flex-wrap:wrap;gap:10px;">
-                <button type="button" class="btn btn-commit" id="btn-sbx-approve">Simulate Approved Payment</button>
-                <button type="button" class="btn" id="btn-sbx-decline">Simulate Card Decline (402)</button>
+          <div class="spec-label" style="margin:22px 0 6px;">3 // WHOP SECURE CHECKOUT (SOLE ACTIVE OPTION)</div>
+          <div class="rail-box" id="whop-panel">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
+              <div>
+                <div style="font-weight:600;">Whop Embedded Global Checkout</div>
+                <p id="whop-status-copy" style="margin:4px 0 0;color:var(--muted);font-size:0.86rem;">Cards, Apple Pay, Google Pay &amp; supported global methods powered by Whop. Additional payment options will be added back after testing.</p>
               </div>
+              <span class="mono" id="whop-plan-badge" style="font-size:11px;color:var(--accent);border:1px solid var(--rule-strong);padding:4px 8px;">PLAN: plan_CTX7xd3gUPsgD</span>
             </div>
 
-            <div id="rail-crypto-panel" hidden>
-              <div style="font-weight:600;">Direct Stablecoin Settlement (US / Global Zero Decline)</div>
-              <p style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Choose network, generate your locked USD quote &amp; order reference, then submit the TxID hash.</p>
-              <div class="input-group" style="max-width:280px;margin-bottom:12px;">
-                <label for="crypto-network">Stablecoin Network</label>
-                <select class="input-control" id="crypto-network">
-                  <option value="USDT_TRC20">USDT (TRC20 — Low Fee)</option>
-                  <option value="USDT_BEP20">USDT (BEP20 / BSC)</option>
-                  <option value="USDC_SOL">USDC (Solana)</option>
-                </select>
-              </div>
-              <button type="button" class="btn btn-commit" id="btn-create-crypto">Generate Wallet Invoice &amp; Continue</button>
+            <div id="free-coupon-box" hidden style="margin-top:14px;padding:14px;border:1px solid var(--ok);background:var(--ok-soft);">
+              <div style="font-weight:600;color:#d6ffef;">100% Promo Code Active — Total Due: $0.00</div>
+              <p style="margin:6px 0 10px;font-size:0.85rem;color:var(--muted);">No card entry needed when paying $0.00 with a 100% test/scholar coupon.</p>
+              <button type="button" class="btn btn-commit" id="btn-claim-free">Complete Free Enrollment ($0.00)</button>
             </div>
 
-            <div id="rail-pk-panel" hidden>
-              <div style="font-weight:600;">Pakistan Local Bank / SadaPay / NayaPay Transfer</div>
-              <p style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Creates a locked PKR order reference at the configured USD/PKR rate and directs to transfer proof submission.</p>
-              <button type="button" class="btn btn-commit" id="btn-create-pk">Generate PKR Invoice &amp; Continue</button>
-            </div>
-
-            <div id="rail-whop-panel" hidden>
-              <div style="font-weight:600;">Whop Embedded Global Checkout (US MoR — Phase 6)</div>
-              <p id="whop-status-copy" style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Checking Whop activation flag...</p>
-              <div id="whop-embed-root"></div>
-              <button type="button" class="btn btn-commit" id="btn-create-whop" style="margin-top:8px;">Launch Embedded Whop Checkout</button>
+            <div class="whop-frame-wrap" id="whop-frame-wrap">
+              <div id="whop-checkout"></div>
             </div>
           </div>
         </section>
@@ -145,7 +125,6 @@
             <div class="ledger-row"><span>Prior Tier Upgrade Credit</span><span class="num" id="q-credit" style="color:var(--ok);">-$0.00</span></div>
             <div class="ledger-row"><span>Promo Coupon Discount</span><span class="num" id="q-discount" style="color:var(--ok);">-$0.00</span></div>
             <div class="ledger-row total"><span>Due Today (USD)</span><span class="num" id="q-final" style="color:var(--accent);">$1.00</span></div>
-            <div class="mono" id="q-pkr" style="font-size:11px;color:var(--muted);text-align:right;margin-top:4px;"></div>
           </div>
 
           <div class="input-group">
@@ -158,14 +137,14 @@
 
           <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--rule);font-size:0.8rem;color:var(--muted);">
             <div class="mono" style="color:var(--ink);margin-bottom:4px;">GUARANTEED ENTITLEMENT RULES:</div>
-            <p style="margin:0;">Instant entitlement sync via SQLite transactions. Coupon <code>TEST100</code> settles at $0.00 immediately so you can verify course unlocking in 1 click.</p>
+            <p style="margin:0;">Orders and tier enrollments sync atomically inside our Firebase Cloud Firestore database via Whop completion and verified webhooks. Use <code>TEST100</code> anytime to verify instant $0.00 enrollment.</p>
           </div>
         </aside>
       </div>
     </div>
   </main>
 
-  <script src="https://js.whop.com/static/checkout/loader.js" async defer></script>
+  <script src="https://cdn.whop.com/elements/amber/elements.js" data-whop-elements></script>
   <script type="module" src="/js/checkout.js"></script>
 </body>
 </html>

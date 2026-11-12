@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Router } from 'express';
 import {
   calculateQuote,
@@ -26,10 +27,19 @@ const adapters = {
   whop: new WhopAdapter(),
 };
 
-router.post('/quote', (req, res, next) => {
+function isProviderActive(provider) {
+  if (provider === 'whop') return Boolean(config.payments.whopEnabled);
+  if (provider === 'sandbox') return Boolean(config.payments.allowSandbox);
+  if (provider === 'crypto_manual') return Boolean(config.payments.enableCryptoManual);
+  if (provider === 'crypto_auto') return Boolean(config.payments.enableCryptoAuto);
+  if (provider === 'local_pk') return Boolean(config.payments.enableLocalPk);
+  return false;
+}
+
+router.post('/quote', async (req, res, next) => {
   try {
     const { packageSlug, couponCode } = req.body || {};
-    const quote = calculateQuote(req.db, {
+    const quote = await calculateQuote(req.store, {
       packageSlug,
       userId: req.user?.id || null,
       couponCode,
@@ -42,7 +52,18 @@ router.post('/quote', (req, res, next) => {
 
 router.post('/session', checkoutLimiter, async (req, res, next) => {
   try {
-    const { packageSlug, provider = 'sandbox', couponCode = '', email, fullName, password, network } = req.body || {};
+    const { packageSlug, provider = 'whop', couponCode = '', email, fullName, password, network } = req.body || {};
+
+    const adapter = adapters[provider];
+    if (!adapter) {
+      return res.status(400).json({ error: `Unsupported payment provider: ${provider}` });
+    }
+    if (!isProviderActive(provider)) {
+      return res.status(403).json({
+        error: 'Only Whop Checkout is active at this time. Other payment options will be enabled after testing.',
+        code: 'PAYMENT_OPTION_DISABLED',
+      });
+    }
 
     let activeUser = req.user;
     if (!activeUser) {
@@ -50,60 +71,47 @@ router.post('/session', checkoutLimiter, async (req, res, next) => {
       if (!cleanEmail) {
         return res.status(400).json({ error: 'Please enter your email address to create your course account.' });
       }
-      const existing = req.db.prepare('SELECT id, email, full_name, role FROM users WHERE email = ?').get(cleanEmail);
+      const existing = await req.store.getUserByEmail(cleanEmail);
       if (existing) {
         return res.status(401).json({
           error: 'An account with this email already exists. Please log in first so your upgrade credit applies cleanly.',
           code: 'ACCOUNT_EXISTS_LOGIN',
         });
       }
-      const userId = registerUser(req.db, {
+      const userId = await registerUser(req.store, {
         email: cleanEmail,
-        password: password || `Temp${Math.random().toString(36).slice(2, 10)}!9`,
+        password: password || `Temp${crypto.randomBytes(6).toString('hex')}!9`,
         fullName: fullName || cleanEmail.split('@')[0],
       });
-      const { rawToken } = createSession(req.db, userId);
+      const { rawToken } = await createSession(req.store, userId);
       setSessionCookie(res, rawToken);
-      activeUser = req.db.prepare('SELECT id, email, full_name, role FROM users WHERE id = ?').get(userId);
+      activeUser = await req.store.getPublicUserById(userId);
     }
 
-    const adapter = adapters[provider];
-    if (!adapter) {
-      return res.status(400).json({ error: `Unsupported payment provider: ${provider}` });
-    }
-
-    const quote = calculateQuote(req.db, {
+    const quote = await calculateQuote(req.store, {
       packageSlug,
       userId: activeUser.id,
       couponCode,
     });
 
     const orderRef = generateOrderRef();
-    req.db
-      .prepare(`
-        INSERT INTO orders (
-          order_ref, user_id, package_id, provider, gross_cents,
-          upgrade_credit_cents, discount_cents, final_cents, currency, coupon_code, status, metadata_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'USD', ?, 'pending', ?)
-      `)
-      .run(
-        orderRef,
-        activeUser.id,
-        quote.package.id,
-        provider,
-        quote.gross_cents,
-        quote.upgrade_credit_cents,
-        quote.discount_cents,
-        quote.final_cents,
-        quote.coupon_code || '',
-        JSON.stringify({ network: network || '', initiated_from: 'checkout_hub' })
-      );
+    const order = await req.store.createOrder({
+      orderRef,
+      userId: activeUser.id,
+      packageId: quote.package.id,
+      provider,
+      grossCents: quote.gross_cents,
+      upgradeCreditCents: quote.upgrade_credit_cents,
+      discountCents: quote.discount_cents,
+      finalCents: quote.final_cents,
+      couponCode: quote.coupon_code || '',
+      status: 'pending',
+      metadataJson: JSON.stringify({ network: network || '', initiated_from: 'whop_checkout' }),
+    });
 
-    const order = req.db.prepare('SELECT * FROM orders WHERE order_ref = ?').get(orderRef);
-
-    // If 100% coupon made total $0.00, settle immediately regardless of rail!
+    // If 100% coupon made total $0.00, settle immediately
     if (quote.final_cents === 0 && quote.coupon_code) {
-      settleOrderAndGrantAccess(req.db, {
+      await settleOrderAndGrantAccess(req.store, {
         orderRef,
         providerPaymentId: `COUPON-${quote.coupon_code}`,
         metadata: { settled_via: '100pct_coupon' },
@@ -122,6 +130,7 @@ router.post('/session', checkoutLimiter, async (req, res, next) => {
       order,
       pkg: quote.package,
       user: activeUser,
+      couponCode: quote.coupon_code || '',
       network,
     });
 
@@ -131,13 +140,138 @@ router.post('/session', checkoutLimiter, async (req, res, next) => {
   }
 });
 
-router.post('/sandbox/confirm', checkoutLimiter, (req, res, next) => {
+router.post('/whop/complete', checkoutLimiter, async (req, res, next) => {
+  try {
+    const {
+      orderRef: reqOrderRef = '',
+      paymentId: reqPaymentId = '',
+      sessionId = '',
+      packageSlug = 'starter-pass',
+      email = '',
+      fullName = '',
+    } = req.body || {};
+
+    let order = null;
+    if (reqOrderRef) {
+      order = await req.store.getOrderByRef(reqOrderRef);
+    }
+    if (!order && reqPaymentId) {
+      order = await req.store.getOrderByPaymentId(reqPaymentId);
+    }
+
+    if (order && order.status === 'paid') {
+      if (!req.user) {
+        const { rawToken } = await createSession(req.store, order.user_id);
+        setSessionCookie(res, rawToken);
+      }
+      return res.json({
+        ok: true,
+        status: 'paid',
+        order,
+        redirectUrl: `/checkout/success?ref=${encodeURIComponent(order.order_ref)}`,
+      });
+    }
+
+    if (reqPaymentId && config.payments.whop.apiKey) {
+      const payment = await WhopAdapter.fetchPayment(String(reqPaymentId).trim());
+      const paymentStatus = String(payment?.status || '').toLowerCase();
+      const paymentSubstatus = String(payment?.substatus || '').toLowerCase();
+      const isPaid = paymentStatus === 'paid' || paymentStatus === 'succeeded' || paymentSubstatus === 'succeeded';
+
+      if (isPaid) {
+        const meta = payment?.metadata || {};
+        let resolvedRef = order?.order_ref || String(meta.orderRef || reqOrderRef || '').trim();
+        let targetUserId = order?.user_id || req.user?.id || null;
+
+        if (!resolvedRef) {
+          const buyerEmail = WhopAdapter.extractEmail(payment, email);
+          if (buyerEmail) {
+            let user = await req.store.getUserByEmail(buyerEmail);
+            if (!user) {
+              const uid = await registerUser(req.store, {
+                email: buyerEmail,
+                password: `Whop${crypto.randomBytes(8).toString('hex')}!`,
+                fullName: String(payment?.user?.name || payment?.user?.username || fullName || buyerEmail.split('@')[0]),
+              });
+              user = await req.store.getPublicUserById(uid);
+            }
+            targetUserId = user.id;
+          }
+
+          if (targetUserId) {
+            const planId = WhopAdapter.extractPlanId(payment);
+            let pkg = planId ? await req.store.getPackageByWhopPlanId(planId) : null;
+            if (!pkg) {
+              pkg = await req.store.getPackageBySlug(meta.packageSlug || packageSlug || 'starter-pass');
+            }
+            if (pkg) {
+              resolvedRef = generateOrderRef();
+              const paidCents = WhopAdapter.extractCents(payment, pkg.price_cents);
+              await req.store.createOrder({
+                orderRef: resolvedRef,
+                userId: targetUserId,
+                packageId: pkg.id,
+                provider: 'whop',
+                providerPaymentId: String(payment.id || reqPaymentId),
+                grossCents: pkg.price_cents,
+                finalCents: paidCents,
+                status: 'pending',
+                metadataJson: JSON.stringify({ sessionId, verified_via: 'whop_api_v1', planId }),
+              });
+            }
+          }
+        }
+
+        if (resolvedRef) {
+          const settled = await settleOrderAndGrantAccess(req.store, {
+            orderRef: resolvedRef,
+            providerPaymentId: String(payment.id || reqPaymentId),
+            metadata: { sessionId, completed_via: 'whop_complete_api' },
+          });
+          if (!req.user && settled?.order?.user_id) {
+            const { rawToken } = await createSession(req.store, settled.order.user_id);
+            setSessionCookie(res, rawToken);
+          }
+          return res.json({
+            ok: true,
+            status: 'paid',
+            order: settled.order,
+            redirectUrl: `/checkout/success?ref=${encodeURIComponent(resolvedRef)}`,
+          });
+        }
+      }
+    }
+
+    if (order && reqPaymentId && !order.provider_payment_id) {
+      const existingMeta = JSON.parse(order.metadata_json || '{}');
+      await req.store.updateOrderPaymentMeta(order.id, {
+        providerPaymentId: String(reqPaymentId).trim(),
+        metadataJson: JSON.stringify({ ...existingMeta, sessionId }),
+      });
+    }
+
+    const fallbackRef = order?.order_ref || reqOrderRef || reqPaymentId || '';
+    res.json({
+      ok: true,
+      status: order?.status || 'pending',
+      awaitingWebhook: true,
+      orderRef: order?.order_ref || null,
+      redirectUrl: fallbackRef
+        ? `/checkout/success?ref=${encodeURIComponent(fallbackRef)}`
+        : '/checkout/success',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/sandbox/confirm', checkoutLimiter, async (req, res, next) => {
   try {
     if (!config.payments.allowSandbox) {
-      return res.status(403).json({ error: 'Sandbox mode is disabled.' });
+      return res.status(403).json({ error: 'Sandbox mode is disabled. Whop Checkout is the sole active option.' });
     }
     const { orderRef, outcome = 'approve', methodLabel = 'US Visa (Simulated)' } = req.body || {};
-    const order = req.db.prepare('SELECT * FROM orders WHERE order_ref = ?').get(orderRef);
+    const order = await req.store.getOrderByRef(orderRef);
     if (!order) return res.status(404).json({ error: 'Order not found.' });
     if (order.provider !== 'sandbox') {
       return res.status(400).json({ error: 'Only sandbox orders can be confirmed via sandbox simulator.' });
@@ -147,10 +281,7 @@ router.post('/sandbox/confirm', checkoutLimiter, (req, res, next) => {
     }
 
     if (outcome === 'decline') {
-      req.db.prepare("UPDATE orders SET status = 'failed', proof_text = ? WHERE id = ?").run(
-        `Simulated card decline (${methodLabel})`,
-        order.id
-      );
+      await req.store.markOrderDeclined(order.id, `Simulated card decline (${methodLabel})`);
       return res.status(402).json({
         error: 'Simulated decline: insufficient funds or bank block test triggered.',
         code: 'CARD_DECLINED',
@@ -159,14 +290,14 @@ router.post('/sandbox/confirm', checkoutLimiter, (req, res, next) => {
     }
 
     if (outcome === 'refund') {
-      const refunded = refundOrderAndRevokeAccess(req.db, {
+      const refunded = await refundOrderAndRevokeAccess(req.store, {
         orderId: order.id,
         reason: 'Simulated sandbox refund test',
       });
       return res.json({ ok: true, order: refunded });
     }
 
-    const settled = settleOrderAndGrantAccess(req.db, {
+    const settled = await settleOrderAndGrantAccess(req.store, {
       orderRef,
       providerPaymentId: `SBX-${Date.now()}`,
       metadata: { simulated_method: methodLabel },
@@ -182,32 +313,23 @@ router.post('/sandbox/confirm', checkoutLimiter, (req, res, next) => {
   }
 });
 
-router.post('/orders/:ref/proof', (req, res) => {
+router.post('/orders/:ref/proof', async (req, res) => {
+  if (!config.payments.enableCryptoManual && !config.payments.enableLocalPk) {
+    return res.status(403).json({ error: 'Manual payment proof submission is currently disabled.' });
+  }
   const { txId, senderNote = '' } = req.body || {};
-  const order = req.db.prepare('SELECT * FROM orders WHERE order_ref = ?').get(req.params.ref);
+  const order = await req.store.getOrderByRef(req.params.ref);
   if (!order) return res.status(404).json({ error: 'Order not found.' });
   if (!txId || String(txId).trim().length < 6) {
     return res.status(400).json({ error: 'Please paste a valid Transaction Hash / Reference ID (min 6 characters).' });
   }
   const cleanProof = `${String(txId).trim()} | ${String(senderNote).trim()}`.slice(0, 300);
-  req.db
-    .prepare("UPDATE orders SET status = 'awaiting_review', proof_text = ? WHERE id = ?")
-    .run(cleanProof, order.id);
+  await req.store.markOrderAwaitingReview(order.id, cleanProof);
   res.json({ ok: true, status: 'awaiting_review', orderRef: order.order_ref });
 });
 
-router.get('/orders/:ref/status', (req, res) => {
-  const row = req.db
-    .prepare(`
-      SELECT o.order_ref, o.provider, o.gross_cents, o.upgrade_credit_cents, o.discount_cents,
-             o.final_cents, o.currency, o.status, o.proof_text, o.created_at, o.paid_at,
-             o.metadata_json, p.slug AS package_slug, p.name AS package_name, p.tier_level
-      FROM orders o
-      JOIN packages p ON p.id = o.package_id
-      WHERE o.order_ref = ?
-    `)
-    .get(req.params.ref);
-
+router.get('/orders/:ref/status', async (req, res) => {
+  const row = await req.store.getOrderStatusDetails(req.params.ref);
   if (!row) return res.status(404).json({ error: 'Order not found.' });
 
   const meta = JSON.parse(row.metadata_json || '{}');
@@ -217,10 +339,8 @@ router.get('/orders/:ref/status', (req, res) => {
       metadata: meta,
       cryptoWallets: row.provider === 'crypto_manual' ? config.payments.cryptoWallets : undefined,
       localPkBank: row.provider === 'local_pk' ? config.payments.localPk : undefined,
-      pkrAmount: Math.round((row.final_cents / 100) * config.payments.pkrUsdRate),
     },
   });
 });
 
 export default router;
-

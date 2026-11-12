@@ -26,7 +26,7 @@ function previewBanner() {
   return `
     <div class="app-panel lit-region" style="padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <div>
-        <span class="status-badge lit">PREVIEW CONSOLE · SIGN IN AS ADMIN FOR LIVE SQLITE MUTATIONS</span>
+        <span class="status-badge lit">PREVIEW CONSOLE · SIGN IN AS ADMIN FOR LIVE FIREBASE MUTATIONS</span>
         <span class="meta" style="margin-left:8px;">Seeded account: <code>admin@vernier.academy</code></span>
       </div>
       <a class="app-btn commit" href="/login?next=/admin">Admin Sign In</a>
@@ -67,9 +67,9 @@ function renderStateNote(kind, title, copy, href = '#/', cta = 'Return to Desk')
 }
 
 const PREVIEW_ORDERS = [
-  { id: 1, order_ref: 'ORD-DEMO-CRYPTO', student_email: 'student@vernier.academy', package_name: 'Tier 2: Structural Price Action', provider: 'crypto_manual', final_cents: 2400, status: 'awaiting_review', proof_text: '0x91af7c8e12b40099d21f... (TRC20)' },
-  { id: 2, order_ref: 'ORD-SEED-SPARK', student_email: 'student@vernier.academy', package_name: 'Tier 1: Execution Blueprint', provider: 'sandbox', final_cents: 100, status: 'paid', proof_text: 'SBX-SEED-01' },
-  { id: 3, order_ref: 'ORD-SEED-VAULT', student_email: 'pro@vernier.academy', package_name: 'Tier 4: Institutional Vault', provider: 'sandbox', final_cents: 50000, status: 'paid', proof_text: 'SBX-SEED-02' },
+  { id: 1, order_ref: 'ORD-SEED-PENDING', student_email: 'student@vernier.academy', package_name: 'Tier 2: Structural Price Action', provider: 'whop', final_cents: 2400, status: 'pending', proof_text: 'whop_sess_demo' },
+  { id: 2, order_ref: 'ORD-SEED-SPARK', student_email: 'student@vernier.academy', package_name: 'Tier 1: Execution Blueprint', provider: 'whop', final_cents: 100, status: 'paid', proof_text: 'WHOP-SEED-01' },
+  { id: 3, order_ref: 'ORD-SEED-VAULT', student_email: 'pro@vernier.academy', package_name: 'Tier 4: Institutional Vault', provider: 'whop', final_cents: 50000, status: 'paid', proof_text: 'WHOP-SEED-02' },
 ];
 
 // ---------- VIEW 1: OVERVIEW (#/) ----------
@@ -77,13 +77,13 @@ async function adminOverview(ctx) {
   markActiveNav('/');
   await ensureAdminSession();
 
-  if (ctx.state === 'loading') return renderLoading('Instructor Command Desk', 'Aggregating USD revenue, PKR equivalents, and TxID queue...');
-  if (ctx.state === 'error') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('error', 'Revenue Aggregate Failed', 'SQLite summary view failed to lock. Retry synchronization.', '#/', 'Reload Desk');
+  if (ctx.state === 'loading') return renderLoading('Instructor Command Desk', 'Aggregating USD revenue, settled Whop orders, and access queue...');
+  if (ctx.state === 'error') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('error', 'Revenue Aggregate Failed', 'Firestore summary view failed to lock. Retry synchronization.', '#/', 'Reload Desk');
   if (ctx.state === 'denied') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('denied', 'Instructor Role Required', 'Authenticate with your admin credentials to mutate orders and student grants.', '/login?next=/admin', 'Sign In Admin');
-  if (ctx.state === 'empty') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('empty', 'Zero Settled Orders Yet', 'No student transactions have cleared yet. Open /checkout to test a $1 Sandbox run.', '/checkout?tier=starter-pass', 'Test $1 Checkout');
-  if (ctx.state === 'done') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('done', 'Approval Queue Cleared (0 Pending)', 'All submitted Crypto TxID and PKR transfer proofs have been reconciled.', '#/orders', 'Inspect Order Ledger');
+  if (ctx.state === 'empty') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('empty', 'Zero Settled Orders Yet', 'No student transactions have cleared yet. Open /checkout to verify Whop Checkout.', '/checkout?tier=starter-pass', 'Open $1 Checkout');
+  if (ctx.state === 'done') return `<div class="page-head" data-region="head" data-region-grow><h1>Instructor Command Desk</h1></div>` + renderStateNote('done', 'Order Ledger Synchronized (0 Pending)', 'All Whop checkout orders have settled cleanly in Firestore.', '#/orders', 'Inspect Order Ledger');
 
-  let kpis = { totalRevenueCents: 50100, totalRevenuePkr: 139278, paidOrders: 2, awaitingReview: 1, totalStudents: 2, whopEnabled: false, sandboxEnabled: true };
+  let kpis = { totalRevenueCents: 50100, paidOrders: 2, awaitingReview: 0, totalStudents: 2, whopEnabled: true, sandboxEnabled: false };
   let byTier = [
     { slug: 'starter-pass', name: 'Tier 1: Execution Blueprint', tier_level: 1, price_cents: 100, orders_count: 1, revenue_cents: 100 },
     { slug: 'price-action', name: 'Tier 2: Structural Price Action', tier_level: 2, price_cents: 2500, orders_count: 0, revenue_cents: 0 },
@@ -100,11 +100,10 @@ async function adminOverview(ctx) {
     }
   }
 
-  document.getElementById('admin-rail-badge').textContent = `WHOP: ${kpis.whopEnabled ? 'LIVE MOR' : 'PHASE 6 PLUG'}`;
+  document.getElementById('admin-rail-badge').textContent = `WHOP: ${kpis.whopEnabled ? 'LIVE CHECKOUT' : 'OFFLINE'}`;
 
   if (ctx.state === 'huge') {
     kpis.totalRevenueCents = 4825900;
-    kpis.totalRevenuePkr = 13416002;
     kpis.paidOrders = 318;
     kpis.totalStudents = 294;
   }
@@ -112,25 +111,25 @@ async function adminOverview(ctx) {
   const litClass = kpis.awaitingReview > 0 ? 'lit-region' : '';
   return `
     <div class="page-head" data-region="head" data-region-grow>
-      <div><h1>Instructor Command Desk</h1><div class="meta">Borderless USD Revenue, PKR Settlement Value &amp; Tier Mix</div></div>
-      <div style="display:flex;gap:8px;"><a class="app-btn commit" href="#/orders?status=awaiting_review">Review Queue (${kpis.awaitingReview})</a></div>
+      <div><h1>Instructor Command Desk</h1><div class="meta">USD Revenue, Whop Settlement Sync &amp; Tier Mix</div></div>
+      <div style="display:flex;gap:8px;"><a class="app-btn commit" href="#/orders">Order Ledger (${kpis.paidOrders} Paid)</a></div>
     </div>
 
     ${previewBanner()}
 
     <div class="kpi-strip">
       <div class="kpi-cell"><div class="meta">NET SETTLED REVENUE (USD)</div><div class="k-val num">$${(kpis.totalRevenueCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>
-      <div class="kpi-cell"><div class="meta">PKR SETTLEMENT EQUIV.</div><div class="k-val num">Rs. ${kpis.totalRevenuePkr.toLocaleString('en-US')}</div></div>
-      <div class="kpi-cell"><div class="meta">AWAITING TXID REVIEW</div><div class="k-val num">${kpis.awaitingReview}</div></div>
+      <div class="kpi-cell"><div class="meta">PAID WHOP ORDERS</div><div class="k-val num">${Number(kpis.paidOrders || 0).toLocaleString('en-US')}</div></div>
+      <div class="kpi-cell"><div class="meta">AWAITING MANUAL REVIEW</div><div class="k-val num">${kpis.awaitingReview}</div></div>
       <div class="kpi-cell"><div class="meta">ENROLLED STUDENTS</div><div class="k-val num">${kpis.totalStudents}</div></div>
     </div>
 
     <div class="app-panel ${litClass}" style="padding:14px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
       <div>
-        <span class="status-badge ${kpis.awaitingReview > 0 ? 'lit' : 'ok'}">${kpis.awaitingReview > 0 ? `${kpis.awaitingReview} TRANSFER PROOF NEEDING APPROVAL` : 'QUEUE CLEAR'}</span>
-        <div class="meta" style="margin-top:4px;">Verify Crypto TxID / Bank IBFT hashes inside Orders &amp; Approvals to unlock student tiers in 1 click.</div>
+        <span class="status-badge ${kpis.awaitingReview > 0 ? 'lit' : 'ok'}">${kpis.awaitingReview > 0 ? `${kpis.awaitingReview} ORDER NEEDING REVIEW` : 'WHOP WEBHOOKS ACTIVE · QUEUE CLEAR'}</span>
+        <div class="meta" style="margin-top:4px;">Whop Checkout is active as the sole payment option. Review order history, refunds, and webhook logs below.</div>
       </div>
-      <a class="app-btn commit" href="#/orders">Open Approvals Ledger</a>
+      <a class="app-btn commit" href="#/orders">Open Orders Ledger</a>
     </div>
 
     <div class="table-wrap" data-region-grow>
@@ -332,7 +331,7 @@ async function adminCms(ctx) {
   await ensureAdminSession();
   if (ctx.state === 'loading') return renderLoading('Course CMS', 'Loading modules and lesson video links...');
   if (ctx.state === 'error' || ctx.state === 'denied' || ctx.state === 'empty' || ctx.state === 'done') {
-    return `<div class="page-head" data-region="head" data-region-grow><h1>Course CMS</h1></div>` + renderStateNote(ctx.state, `Course CMS: ${ctx.state.toUpperCase()}`, ctx.state === 'done' ? 'Playbook draft synced cleanly to SQLite curriculum.' : 'Inspect or add lessons cleanly when signed in as Instructor Admin.', '#/cms', 'Reset View');
+    return `<div class="page-head" data-region="head" data-region-grow><h1>Course CMS</h1></div>` + renderStateNote(ctx.state, `Course CMS: ${ctx.state.toUpperCase()}`, ctx.state === 'done' ? 'Playbook draft synced cleanly to Firestore curriculum.' : 'Inspect or add lessons cleanly when signed in as Instructor Admin.', '#/cms', 'Reset View');
   }
 
   let modules = [];
@@ -368,7 +367,7 @@ async function adminCms(ctx) {
       });
       const data = await res.json();
       if (!res.ok) return toast(data.error || 'CMS create failed');
-      toast('New lesson published to SQLite!');
+      toast('New lesson published to Firestore!');
       ctx.refresh();
     });
   });

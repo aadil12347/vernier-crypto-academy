@@ -6,4 +6,7 @@ db/*.sqlite
 db/*.sqlite-shm
 db/*.sqlite-wal
 .vercel/
+.firebase/
+*firebase-adminsdk*.json
+serviceAccountKey*.json
 *.log

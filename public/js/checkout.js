@@ -1,12 +1,16 @@
 const params = new URLSearchParams(location.search);
 let selectedSlug = params.get('tier') || 'starter-pass';
-let selectedProvider = 'sandbox';
 let couponCode = params.get('coupon') || '';
-let paymentRailsConfig = { whopEnabled: false, pkrUsdRate: 278 };
+let currentUser = null;
+let packagesCatalog = [];
+let paymentRailsConfig = { whopEnabled: true, whopDefaultPlanId: 'plan_CTX7xd3gUPsgD' };
+let activeOrderRef = '';
+let activeCheckoutElement = null;
+let activeCheckoutController = null;
+let mountSequence = 0;
 
 const banner = document.getElementById('ck-banner');
 const tierBtns = [...document.querySelectorAll('.tier-pill')];
-const railBtns = [...document.querySelectorAll('.rail-btn')];
 const couponInput = document.getElementById('ck-coupon');
 
 function showBanner(msg, type = 'err') {
@@ -18,7 +22,160 @@ function clearBanner() {
   banner.className = 'msg-banner';
 }
 
-async function refreshQuote() {
+function getSelectedPackage() {
+  return packagesCatalog.find((p) => p.slug === selectedSlug) || null;
+}
+
+function resolvePlanId(quotePkg) {
+  const pkg = quotePkg || getSelectedPackage();
+  const candidate = String(pkg?.whop_plan_id || '').trim();
+  if (candidate && !candidate.toLowerCase().includes('placeholder')) return candidate;
+  return paymentRailsConfig.whopDefaultPlanId || 'plan_CTX7xd3gUPsgD';
+}
+
+async function waitForWhopElements(timeoutMs = 10000) {
+  if (typeof window.WhopElements === 'function') return window.WhopElements;
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    await new Promise((r) => setTimeout(r, 80));
+    if (typeof window.WhopElements === 'function') return window.WhopElements;
+  }
+  return null;
+}
+
+function destroyActiveWhop() {
+  try {
+    if (activeCheckoutElement && typeof activeCheckoutElement.destroy === 'function') {
+      activeCheckoutElement.destroy();
+    }
+  } catch {
+    // Ignore teardown errors on hot swap
+  }
+  try {
+    if (activeCheckoutController && typeof activeCheckoutController.destroy === 'function') {
+      activeCheckoutController.destroy();
+    }
+  } catch {
+    // Ignore teardown errors on hot swap
+  }
+  activeCheckoutElement = null;
+  activeCheckoutController = null;
+  const container = document.getElementById('whop-checkout');
+  if (container) container.replaceChildren();
+}
+
+async function handleWhopComplete(payload) {
+  const paymentId = String(payload?.paymentId || payload?.payment_id || payload?.id || '').trim();
+  const sessionId = String(payload?.sessionId || payload?.session_id || '').trim();
+  showBanner('Payment received! Confirming portal access...', 'ok');
+
+  try {
+    const res = await fetch('/api/v1/checkout/whop/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderRef: activeOrderRef,
+        paymentId,
+        sessionId,
+        packageSlug: selectedSlug,
+        email: currentUser?.email || document.getElementById('ck-email')?.value || '',
+        fullName: currentUser?.full_name || document.getElementById('ck-name')?.value || '',
+      }),
+    });
+    const data = await res.json();
+    if (data?.redirectUrl) {
+      location.href = data.redirectUrl;
+      return;
+    }
+  } catch {
+    // Fall through to status redirect
+  }
+
+  const refParam = activeOrderRef || paymentId;
+  location.href = refParam ? `/checkout/success?ref=${encodeURIComponent(refParam)}` : '/checkout/success';
+}
+
+async function mountWhopCheckout({ planId, buyerEmail = '', promoCode = '', metadata = {}, returnUrl = '' }) {
+  const seq = ++mountSequence;
+  const wrap = document.getElementById('whop-frame-wrap');
+  const badge = document.getElementById('whop-plan-badge');
+  if (badge) badge.textContent = `PLAN: ${planId}`;
+  if (!wrap) return;
+
+  destroyActiveWhop();
+
+  const WhopElementsFactory = await waitForWhopElements();
+  if (seq !== mountSequence) return;
+
+  if (!WhopElementsFactory) {
+    showBanner('Whop checkout script failed to load. Check network/adblockers and reload the page.', 'err');
+    return;
+  }
+
+  let handledComplete = false;
+  const onCompleteOnce = (payload) => {
+    if (handledComplete) return;
+    handledComplete = true;
+    handleWhopComplete(payload);
+  };
+
+  try {
+    const elements = WhopElementsFactory({
+      appearance: {
+        theme: { appearance: 'dark' },
+      },
+    });
+
+    const controllerOpts = {
+      plan: planId,
+      ...(promoCode ? { promoCode } : {}),
+      ...(metadata && Object.keys(metadata).length ? { metadata } : {}),
+      ...(returnUrl ? { returnUrl } : {}),
+      onComplete: onCompleteOnce,
+    };
+
+    const checkout = elements.checkout.create(controllerOpts);
+    activeCheckoutController = checkout;
+
+    const cleanEmail = String(buyerEmail || '').trim();
+    const element = checkout.create('checkout', cleanEmail ? { buyerEmail: cleanEmail } : {});
+    activeCheckoutElement = element;
+    element.mount('#whop-checkout');
+  } catch (err) {
+    showBanner(`Could not initialize Whop Checkout: ${err.message}`, 'err');
+  }
+}
+
+async function createCheckoutSession({ redirectInstant = false } = {}) {
+  const payload = {
+    packageSlug: selectedSlug,
+    provider: 'whop',
+    couponCode,
+    email: document.getElementById('ck-email')?.value || '',
+    fullName: document.getElementById('ck-name')?.value || '',
+    password: document.getElementById('ck-password')?.value || '',
+  };
+  const res = await fetch('/api/v1/checkout/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    showBanner(data.error || 'Could not initialize Whop checkout session.');
+    return null;
+  }
+  if (data.session?.mode === 'instant_coupon' && data.session.redirectUrl) {
+    if (redirectInstant) location.href = data.session.redirectUrl;
+    return data;
+  }
+  if (data.session?.orderRef) {
+    activeOrderRef = data.session.orderRef;
+  }
+  return data;
+}
+
+async function refreshQuoteAndMount({ lockSessionIfSignedIn = true } = {}) {
   clearBanner();
   const res = await fetch('/api/v1/checkout/quote', {
     method: 'POST',
@@ -28,8 +185,10 @@ async function refreshQuote() {
   const data = await res.json();
   if (!res.ok) {
     showBanner(data.error || 'Could not compute quote.');
+    destroyActiveWhop();
     return null;
   }
+
   const q = data.quote;
   document.getElementById('sum-pkg-name').textContent = q.package.name;
   const badgePart = q.package.badge_code ? ` · ${q.package.badge_code}` : '';
@@ -38,10 +197,49 @@ async function refreshQuote() {
   document.getElementById('q-credit').textContent = `-$${(q.upgrade_credit_cents / 100).toFixed(2)}`;
   document.getElementById('q-discount').textContent = `-$${(q.discount_cents / 100).toFixed(2)}`;
   document.getElementById('q-final').textContent = `$${(q.final_cents / 100).toFixed(2)}`;
-  const pkr = Math.round((q.final_cents / 100) * (paymentRailsConfig.pkrUsdRate || 278));
-  document.getElementById('q-pkr').textContent = `Approx. Rs. ${pkr.toLocaleString('en-US')} PKR (at Rs. ${paymentRailsConfig.pkrUsdRate}/USD)`;
+
+  const freeBox = document.getElementById('free-coupon-box');
+  const frameWrap = document.getElementById('whop-frame-wrap');
+  const isFree = q.final_cents === 0 && Boolean(q.coupon_code);
+
+  if (freeBox && frameWrap) {
+    freeBox.hidden = !isFree;
+    frameWrap.hidden = isFree;
+  }
+
   if (q.coupon_error) showBanner(q.coupon_error, 'err');
   else if (q.coupon_code) showBanner(`Coupon ${q.coupon_code} applied.`, 'ok');
+
+  if (isFree) {
+    destroyActiveWhop();
+    return q;
+  }
+
+  // Signed-in user automatically binds an authoritative orderRef before mounting Whop Checkout
+  if (currentUser && lockSessionIfSignedIn) {
+    const created = await createCheckoutSession({ redirectInstant: false });
+    if (created?.session?.mode === 'whop_embed') {
+      const s = created.session;
+      await mountWhopCheckout({
+        planId: s.planId,
+        buyerEmail: s.email || currentUser.email,
+        metadata: s.metadata || { orderRef: s.orderRef, packageSlug: selectedSlug },
+        returnUrl: s.returnUrl,
+      });
+      return q;
+    }
+  }
+
+  // Guest fallback: mount Whop Checkout directly so buyer sees the live form immediately
+  activeOrderRef = '';
+  const guestEmail = document.getElementById('ck-email')?.value || '';
+  await mountWhopCheckout({
+    planId: resolvePlanId(q.package),
+    buyerEmail: guestEmail,
+    metadata: { packageSlug: selectedSlug },
+    returnUrl: `${location.origin}/checkout/success?tier=${encodeURIComponent(selectedSlug)}`,
+  });
+
   return q;
 }
 
@@ -51,110 +249,53 @@ function selectTier(slug) {
   const url = new URL(location.href);
   url.searchParams.set('tier', slug);
   history.replaceState(null, '', url);
-  refreshQuote();
-}
-
-function selectProvider(provider) {
-  selectedProvider = provider;
-  railBtns.forEach((b) => b.classList.toggle('active', b.dataset.provider === provider));
-  document.getElementById('rail-sandbox-panel').hidden = provider !== 'sandbox';
-  document.getElementById('rail-crypto-panel').hidden = provider !== 'crypto_manual';
-  document.getElementById('rail-pk-panel').hidden = provider !== 'local_pk';
-  document.getElementById('rail-whop-panel').hidden = provider !== 'whop';
-}
-
-async function createCheckoutSession(provider) {
-  clearBanner();
-  const payload = {
-    packageSlug: selectedSlug,
-    provider,
-    couponCode,
-    email: document.getElementById('ck-email')?.value || '',
-    fullName: document.getElementById('ck-name')?.value || '',
-    password: document.getElementById('ck-password')?.value || '',
-    network: document.getElementById('crypto-network')?.value || '',
-  };
-  const res = await fetch('/api/v1/checkout/session', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const data = await res.json();
-  if (!res.ok) {
-    showBanner(data.error || 'Could not initialize checkout session.');
-    return null;
-  }
-  if (data.session?.mode === 'instant_coupon' && data.session.redirectUrl) {
-    location.href = data.session.redirectUrl;
-    return null;
-  }
-  return data;
+  refreshQuoteAndMount();
 }
 
 document.getElementById('btn-apply-coupon').addEventListener('click', () => {
   couponCode = couponInput.value.trim();
-  refreshQuote();
+  refreshQuoteAndMount();
 });
 
-document.getElementById('btn-sbx-approve').addEventListener('click', async () => {
-  const created = await createCheckoutSession('sandbox');
-  if (!created) return;
-  const res = await fetch('/api/v1/checkout/sandbox/confirm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderRef: created.session.orderRef, outcome: 'approve', methodLabel: 'US Visa (Sandbox Pass)' }),
-  });
-  const data = await res.json();
-  if (!res.ok) return showBanner(data.error || 'Sandbox confirmation failed.');
-  location.href = data.redirectUrl || `/checkout/success?ref=${encodeURIComponent(created.session.orderRef)}`;
+document.getElementById('btn-claim-free')?.addEventListener('click', async () => {
+  clearBanner();
+  await createCheckoutSession({ redirectInstant: true });
 });
 
-document.getElementById('btn-sbx-decline').addEventListener('click', async () => {
-  const created = await createCheckoutSession('sandbox');
-  if (!created) return;
-  const res = await fetch('/api/v1/checkout/sandbox/confirm', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ orderRef: created.session.orderRef, outcome: 'decline', methodLabel: 'US Visa (Decline Simulation)' }),
-  });
-  const data = await res.json();
-  showBanner(`${data.error || 'Simulated Decline'} (Order ${created.session.orderRef} marked failed)`, 'err');
-});
+document.getElementById('btn-lock-whop-session')?.addEventListener('click', async () => {
+  clearBanner();
+  const created = await createCheckoutSession({ redirectInstant: true });
+  if (!created || created.session?.mode !== 'whop_embed') return;
 
-document.getElementById('btn-create-crypto').addEventListener('click', async () => {
-  const created = await createCheckoutSession('crypto_manual');
-  if (created?.session?.redirectUrl) location.href = created.session.redirectUrl;
-});
+  const meRes = await fetch('/api/v1/auth/me');
+  if (meRes.ok) {
+    const { user } = await meRes.json();
+    if (user) {
+      currentUser = user;
+      document.getElementById('signed-in-card').hidden = false;
+      document.getElementById('signed-in-user').textContent = `${user.full_name} (${user.email}) · Current Level ${user.max_tier_level}`;
+      document.getElementById('guest-fields').hidden = true;
+    }
+  }
 
-document.getElementById('btn-create-pk').addEventListener('click', async () => {
-  const created = await createCheckoutSession('local_pk');
-  if (created?.session?.redirectUrl) location.href = created.session.redirectUrl;
-});
-
-document.getElementById('btn-create-whop').addEventListener('click', async () => {
-  const created = await createCheckoutSession('whop');
-  if (!created) return;
   const s = created.session;
-  const mount = document.getElementById('whop-embed-root');
-  mount.innerHTML = '';
-  const el = document.createElement('div');
-  el.setAttribute('data-whop-checkout-plan-id', s.planId);
-  el.setAttribute('data-whop-checkout-email', s.email);
-  el.setAttribute('data-whop-checkout-return-url', s.returnUrl);
-  el.setAttribute('data-whop-checkout-theme', 'dark');
-  mount.append(el);
-  if (window.WhopCheckoutLoader?.mount) window.WhopCheckoutLoader.mount();
-  showBanner(`Whop Checkout mounted for Order ${s.orderRef}. Complete card or Apple Pay inside frame.`, 'ok');
+  showBanner(`Order ${s.orderRef} bound to ${s.email}. Complete your payment in Whop Checkout below.`, 'ok');
+  await mountWhopCheckout({
+    planId: s.planId,
+    buyerEmail: s.email,
+    metadata: s.metadata,
+    returnUrl: s.returnUrl,
+  });
 });
 
 tierBtns.forEach((b) => b.addEventListener('click', () => selectTier(b.dataset.slug)));
-railBtns.forEach((b) => b.addEventListener('click', () => selectProvider(b.dataset.provider)));
 
 async function bootstrap() {
   const [meRes, pkgRes] = await Promise.all([fetch('/api/v1/auth/me'), fetch('/api/v1/catalog/packages')]);
   if (meRes.ok) {
     const { user } = await meRes.json();
     if (user) {
+      currentUser = user;
       document.getElementById('signed-in-card').hidden = false;
       document.getElementById('signed-in-user').textContent = `${user.full_name} (${user.email}) · Current Level ${user.max_tier_level}`;
       document.getElementById('guest-fields').hidden = true;
@@ -167,22 +308,11 @@ async function bootstrap() {
   }
   if (pkgRes.ok) {
     const data = await pkgRes.json();
+    packagesCatalog = data.packages || [];
     paymentRailsConfig = data.paymentRails || paymentRailsConfig;
-    const whopStatus = document.getElementById('whop-tab-status');
-    const whopCopy = document.getElementById('whop-status-copy');
-    const whopBtn = document.getElementById('btn-create-whop');
-    if (paymentRailsConfig.whopEnabled) {
-      whopStatus.textContent = 'Live Cards & Apple Pay';
-      whopCopy.textContent = 'Whop Merchant-of-Record Checkout is LIVE. Pay seamlessly with Visa, Mastercard, Apple Pay, or Cash App.';
-    } else {
-      whopStatus.textContent = 'Phase 6 Plug';
-      whopCopy.textContent = 'Whop Checkout is cleanly wired via js.whop.com/static/checkout/loader.js and HMAC webhooks. Enable WHOP_ENABLED=true + your Whop Plan IDs in .env at final launch (Phase 6). Use Developer Sandbox or Crypto Direct to test immediately.';
-      if (whopBtn) whopBtn.textContent = 'Preview Whop Phase-6 Trigger';
-    }
   }
   if (couponCode) couponInput.value = couponCode;
   selectTier(selectedSlug);
-  selectProvider('sandbox');
 }
 
 bootstrap();

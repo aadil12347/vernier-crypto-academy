@@ -1,4 +1,4 @@
-import { getDb } from '../../db/connection.js';
+import { getStore } from '../../db/store.js';
 import { getSessionUser } from '../services/authService.js';
 import { config } from '../config.js';
 
@@ -35,12 +35,16 @@ export function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
 }
 
-export function attachUser(req, _res, next) {
+export async function attachUser(req, _res, next) {
   try {
+    if (req.app.locals.readyPromise) {
+      await req.app.locals.readyPromise;
+    }
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[SESSION_COOKIE_NAME];
-    req.db = req.app.locals.db || getDb();
-    req.user = token ? getSessionUser(req.db, token) : null;
+    req.store = req.app.locals.store || getStore();
+    req.db = req.store;
+    req.user = token ? await getSessionUser(req.store, token) : null;
     req.sessionToken = token || null;
     next();
   } catch (err) {
@@ -68,4 +72,3 @@ export function requireAdmin(req, res, next) {
   }
   next();
 }
-

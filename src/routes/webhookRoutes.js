@@ -4,15 +4,53 @@ import { WhopAdapter } from '../services/payments/WhopAdapter.js';
 import { CryptoAutoAdapter } from '../services/payments/CryptoAutoAdapter.js';
 import { settleOrderAndGrantAccess, refundOrderAndRevokeAccess, generateOrderRef } from '../services/entitlementService.js';
 import { registerUser } from '../services/authService.js';
+import { config } from '../config.js';
 
 const router = Router();
 
+const WHOP_PAID_EVENTS = new Set([
+  'payment.succeeded',
+  'payment_succeeded',
+  'membership.went_valid',
+  'membership.activated',
+  'membership_activated',
+]);
+
+const WHOP_REFUND_EVENTS = new Set([
+  'payment.refunded',
+  'refund.created',
+  'membership.went_invalid',
+  'membership.deactivated',
+  'membership_deactivated',
+]);
+
+async function resolveWhopPackage(store, planId, packageSlugHint = '') {
+  if (packageSlugHint) {
+    const byHint = await store.getPackageBySlug(packageSlugHint);
+    if (byHint) return byHint;
+  }
+  if (planId) {
+    const byDbPlan = await store.getPackageByWhopPlanId(planId);
+    if (byDbPlan) return byDbPlan;
+
+    const matchedSlug = Object.entries(config.payments.whop.plans || {}).find(([, pid]) => pid === planId)?.[0];
+    if (matchedSlug) {
+      const byConfig = await store.getPackageBySlug(matchedSlug);
+      if (byConfig) return byConfig;
+    }
+
+    if (planId === config.payments.whop.defaultPlanId) {
+      return store.getPackageBySlug('starter-pass');
+    }
+  }
+  return null;
+}
+
 /**
  * POST /api/v1/webhooks/whop
- * Activated in Phase 6 (also fully unit-testable right now with WHOP_WEBHOOK_SECRET).
+ * Supports both Standard Webhooks (webhook-id/timestamp/signature) and legacy x-whop-signature headers.
  */
-router.post('/whop', (req, res) => {
-  const sigHeader = req.headers['x-whop-signature'] || req.headers['whop-signature'] || '';
+router.post('/whop', async (req, res) => {
   const rawBody = req.rawBody;
 
   let payload;
@@ -22,89 +60,102 @@ router.post('/whop', (req, res) => {
     return res.status(400).json({ error: 'Invalid JSON payload' });
   }
 
-  const sigValid = WhopAdapter.verifyWebhookSignature(rawBody || JSON.stringify(payload), sigHeader);
-  const eventId = String(payload?.id || payload?.event_id || `whop_${crypto.randomBytes(8).toString('hex')}`);
+  const sigValid = WhopAdapter.verifyWebhookSignature(rawBody || JSON.stringify(payload), req.headers);
+  const eventId = String(
+    payload?.id || payload?.event_id || req.headers['webhook-id'] || `whop_${crypto.randomBytes(8).toString('hex')}`
+  );
   const eventType = String(payload?.action || payload?.type || 'unknown');
 
   if (!sigValid) {
     const rejectKey = `invalid_${eventId}_${crypto.randomBytes(4).toString('hex')}`;
-    req.db
-      .prepare(`
-        INSERT INTO webhook_events (provider, event_id, event_type, signature_valid, payload_json, processed, error_message)
-        VALUES ('whop', ?, ?, 0, ?, 0, 'Invalid Whop HMAC signature')
-      `)
-      .run(rejectKey, eventType, JSON.stringify(payload));
+    await req.store.createWebhookEvent({
+      provider: 'whop',
+      eventId: rejectKey,
+      eventType,
+      signatureValid: false,
+      payloadJson: JSON.stringify(payload),
+      processed: false,
+      errorMessage: 'Invalid Whop webhook signature',
+    });
     return res.status(401).json({ error: 'Invalid webhook signature' });
   }
 
-  // Idempotency check (strictly after valid HMAC verification so invalid attempts cannot poison event_id)
-  const existing = req.db.prepare('SELECT id, processed FROM webhook_events WHERE event_id = ?').get(eventId);
-  if (existing) {
-    return res.json({ received: true, duplicate: true, processed: Boolean(existing.processed) });
+  // Atomic idempotency check (strictly after valid HMAC verification so invalid attempts cannot poison event_id)
+  const record = await req.store.createWebhookEvent({
+    provider: 'whop',
+    eventId,
+    eventType,
+    signatureValid: true,
+    payloadJson: JSON.stringify(payload),
+    processed: false,
+  });
+  if (!record.created) {
+    return res.json({ received: true, duplicate: true, processed: Boolean(record.event?.processed) });
   }
-
-  req.db
-    .prepare(`
-      INSERT INTO webhook_events (provider, event_id, event_type, signature_valid, payload_json, processed)
-      VALUES ('whop', ?, ?, 1, ?, 0)
-    `)
-    .run(eventId, eventType, JSON.stringify(payload));
 
   try {
     const data = payload?.data || payload;
     const meta = data?.metadata || {};
     const orderRef = meta.orderRef || null;
-    const paymentId = String(data?.id || data?.payment_id || eventId);
+    const paymentId = String(data?.payment_id || data?.payment?.id || data?.id || eventId);
 
-    if (eventType === 'payment.succeeded' || eventType === 'membership.went_valid') {
+    if (WHOP_PAID_EVENTS.has(eventType)) {
       if (orderRef) {
-        settleOrderAndGrantAccess(req.db, {
+        await settleOrderAndGrantAccess(req.store, {
           orderRef,
           providerPaymentId: paymentId,
-          metadata: { whop_event: eventType, whop_membership_id: data?.membership_id || '' },
+          metadata: { whop_event: eventType, whop_membership_id: data?.membership_id || data?.membership?.id || '' },
         });
-      } else if (data?.user?.email && (data?.plan?.id || data?.plan_id)) {
-        // Direct Whop link fallback (if someone bought directly on whop.com without starting at /checkout)
-        const planId = String(data?.plan?.id || data?.plan_id);
-        const pkg = req.db.prepare('SELECT * FROM packages WHERE whop_plan_id = ?').get(planId);
-        if (pkg) {
-          let user = req.db.prepare('SELECT * FROM users WHERE email = ?').get(data.user.email.toLowerCase());
+      } else {
+        // Direct Whop embed/link fallback (when checkout started without pre-locking an academy account)
+        const buyerEmail = WhopAdapter.extractEmail(data);
+        const planId = WhopAdapter.extractPlanId(data);
+        const pkg = await resolveWhopPackage(req.store, planId, meta?.packageSlug || '');
+        if (buyerEmail && pkg) {
+          let user = await req.store.getUserByEmail(buyerEmail);
           if (!user) {
-            const uid = registerUser(req.db, {
-              email: data.user.email,
+            const uid = await registerUser(req.store, {
+              email: buyerEmail,
               password: `Whop${crypto.randomBytes(8).toString('hex')}!`,
-              fullName: data.user.username || data.user.email.split('@')[0],
+              fullName: data?.user?.name || data?.user?.username || buyerEmail.split('@')[0],
             });
-            user = req.db.prepare('SELECT * FROM users WHERE id = ?').get(uid);
+            user = await req.store.getUserById(uid);
           }
           const createdRef = generateOrderRef();
-          req.db
-            .prepare(`
-              INSERT INTO orders (order_ref, user_id, package_id, provider, provider_payment_id, gross_cents, final_cents, status)
-              VALUES (?, ?, ?, 'whop', ?, ?, ?, 'pending')
-            `)
-            .run(createdRef, user.id, pkg.id, paymentId, pkg.price_cents, pkg.price_cents);
-          settleOrderAndGrantAccess(req.db, { orderRef: createdRef, providerPaymentId: paymentId });
+          await req.store.createOrder({
+            orderRef: createdRef,
+            userId: user.id,
+            packageId: pkg.id,
+            provider: 'whop',
+            providerPaymentId: paymentId,
+            grossCents: pkg.price_cents,
+            finalCents: WhopAdapter.extractCents(data, pkg.price_cents),
+            status: 'pending',
+          });
+          await settleOrderAndGrantAccess(req.store, { orderRef: createdRef, providerPaymentId: paymentId });
         }
       }
-    } else if (eventType === 'payment.refunded' || eventType === 'membership.went_invalid') {
+    } else if (WHOP_REFUND_EVENTS.has(eventType)) {
       const targetOrder = orderRef
-        ? req.db.prepare('SELECT id FROM orders WHERE order_ref = ?').get(orderRef)
-        : req.db.prepare('SELECT id FROM orders WHERE provider_payment_id = ?').get(paymentId);
+        ? await req.store.getOrderByRef(orderRef)
+        : await req.store.getOrderByPaymentId(paymentId);
       if (targetOrder) {
-        refundOrderAndRevokeAccess(req.db, { orderId: targetOrder.id, reason: `Whop event: ${eventType}` });
+        await refundOrderAndRevokeAccess(req.store, { orderId: targetOrder.id, reason: `Whop event: ${eventType}` });
       }
     }
 
-    req.db.prepare('UPDATE webhook_events SET processed = 1 WHERE event_id = ?').run(eventId);
+    await req.store.updateWebhookEvent(eventId, { processed: true });
     res.json({ received: true, processed: true });
   } catch (err) {
-    req.db.prepare('UPDATE webhook_events SET error_message = ? WHERE event_id = ?').run(err.message, eventId);
+    await req.store.updateWebhookEvent(eventId, { errorMessage: err.message });
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
 
-router.post('/crypto', (req, res) => {
+router.post('/crypto', async (req, res) => {
+  if (!config.payments.enableCryptoAuto) {
+    return res.status(403).json({ error: 'Crypto webhooks are currently disabled.' });
+  }
   const sigHeader = req.headers['x-nowpayments-sig'] || '';
   const payload = req.body || {};
   const sigValid = CryptoAutoAdapter.verifyIpnSignature(payload, sigHeader);
@@ -112,34 +163,37 @@ router.post('/crypto', (req, res) => {
 
   if (!sigValid) {
     const rejectKey = `invalid_${eventId}_${crypto.randomBytes(4).toString('hex')}`;
-    req.db
-      .prepare(`
-        INSERT INTO webhook_events (provider, event_id, event_type, signature_valid, payload_json, processed, error_message)
-        VALUES ('crypto_auto', ?, ?, 0, ?, 0, 'Invalid IPN signature')
-      `)
-      .run(rejectKey, String(payload.payment_status || 'ipn'), JSON.stringify(payload));
+    await req.store.createWebhookEvent({
+      provider: 'crypto_auto',
+      eventId: rejectKey,
+      eventType: String(payload.payment_status || 'ipn'),
+      signatureValid: false,
+      payloadJson: JSON.stringify(payload),
+      processed: false,
+      errorMessage: 'Invalid IPN signature',
+    });
     return res.status(401).json({ error: 'Invalid IPN signature' });
   }
 
-  const existing = req.db.prepare('SELECT id FROM webhook_events WHERE event_id = ?').get(eventId);
-  if (existing) return res.json({ received: true, duplicate: true });
-
-  req.db
-    .prepare(`
-      INSERT INTO webhook_events (provider, event_id, event_type, signature_valid, payload_json, processed)
-      VALUES ('crypto_auto', ?, ?, 1, ?, 0)
-    `)
-    .run(eventId, String(payload.payment_status || 'ipn'), JSON.stringify(payload));
+  const record = await req.store.createWebhookEvent({
+    provider: 'crypto_auto',
+    eventId,
+    eventType: String(payload.payment_status || 'ipn'),
+    signatureValid: true,
+    payloadJson: JSON.stringify(payload),
+    processed: false,
+  });
+  if (!record.created) return res.json({ received: true, duplicate: true });
 
   if (payload.payment_status === 'finished' || payload.payment_status === 'confirmed') {
     if (payload.order_id) {
-      settleOrderAndGrantAccess(req.db, {
+      await settleOrderAndGrantAccess(req.store, {
         orderRef: payload.order_id,
         providerPaymentId: String(payload.payment_id || ''),
       });
     }
   }
-  req.db.prepare('UPDATE webhook_events SET processed = 1 WHERE event_id = ?').run(eventId);
+  await req.store.updateWebhookEvent(eventId, { processed: true });
   res.json({ received: true });
 });
 

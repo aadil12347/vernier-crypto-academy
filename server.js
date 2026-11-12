@@ -3,8 +3,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { config } from './src/config.js';
-import { getDb } from './db/connection.js';
+import { getStore } from './db/store.js';
 import { seedDatabase } from './db/seed.js';
+import { isFirebaseConfigured } from './db/firebaseClient.js';
 import { attachRequestId, errorHandler } from './src/middleware/errorHandler.js';
 import { attachUser } from './src/middleware/auth.js';
 
@@ -15,13 +16,15 @@ import checkoutRoutes from './src/routes/checkoutRoutes.js';
 import webhookRoutes from './src/routes/webhookRoutes.js';
 import adminRoutes from './src/routes/adminRoutes.js';
 
-export function createApp({ dbPath } = {}) {
-  const db = dbPath ? getDb(dbPath) : getDb();
-  seedDatabase(db);
+export function createApp({ dbPath, firestore } = {}) {
+  const store = getStore({ dbPath, firestore });
+  const readyPromise = seedDatabase(store);
 
   const app = express();
   app.set('trust proxy', 1);
-  app.locals.db = db;
+  app.locals.store = store;
+  app.locals.db = store;
+  app.locals.readyPromise = readyPromise;
 
   app.use(attachRequestId);
 
@@ -45,11 +48,24 @@ export function createApp({ dbPath } = {}) {
     next();
   });
 
+  app.use(async (req, _res, next) => {
+    await req.app.locals.readyPromise;
+    next();
+  });
+
   app.use(attachUser);
 
   // Healthcheck
-  app.get('/api/health', (_req, res) => {
-    res.json({ ok: true, whopEnabled: config.payments.whopEnabled, sandboxEnabled: config.payments.allowSandbox });
+  app.get('/api/health', (req, res) => {
+    const activeStore = req.app.locals.store;
+    res.json({
+      ok: true,
+      database: activeStore?.dialect === 'firestore' ? 'firebase-firestore' : 'sqlite',
+      firebase: isFirebaseConfigured(),
+      whopEnabled: config.payments.whopEnabled,
+      whopDefaultPlanId: config.payments.whop.defaultPlanId,
+      sandboxEnabled: config.payments.allowSandbox,
+    });
   });
 
   // REST API routes
@@ -113,9 +129,18 @@ const isTestRunner = Boolean(process.env.NODE_TEST_CONTEXT);
 const defaultApp = isTestRunner ? null : createApp();
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
-  defaultApp.listen(config.port, () => {
-    console.log(`VERNIER Crypto Academy running on http://localhost:${config.port}`);
-  });
+  defaultApp.locals.readyPromise
+    .then(() => {
+      defaultApp.listen(config.port, () => {
+        console.log(
+          `VERNIER Crypto Academy running on http://localhost:${config.port} [db=${defaultApp.locals.store.dialect}]`
+        );
+      });
+    })
+    .catch((err) => {
+      console.error('Failed to initialize database:', err);
+      process.exit(1);
+    });
 }
 
 export default defaultApp;

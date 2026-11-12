@@ -1,0 +1,10 @@
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json",
+    "edition": "enterprise",
+    "database": "vernier-db",
+    "location": "nam5"
+  }
+}
+

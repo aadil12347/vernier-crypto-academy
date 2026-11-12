@@ -3,84 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Submit Transfer Proof — VERNIER</title>
+  <title>Whop Settlement Pending — VERNIER</title>
   <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
   <link rel="stylesheet" href="/styles/tokens.css">
   <link rel="stylesheet" href="/styles/site.css">
   <style>
     .pending-wrap { min-height: 100vh; padding: 94px clamp(20px, 5vw, 72px) 72px; }
     .pending-grid { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(260px, 0.9fr); gap: 22px; margin-top: 20px; }
-    .addr-box {
-      background: var(--ground); border: 1px solid var(--rule-strong); padding: 12px 14px;
-      font-family: var(--font-mono); font-size: 0.85rem; word-break: break-all;
-      display: flex; justify-content: space-between; align-items: center; gap: 10px;
-    }
     @media (max-width: 820px) { .pending-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
   <header class="site-header" aria-label="Primary navigation">
     <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
-    <nav class="nav-links"><a href="/pricing">Packages</a><a href="/course" class="keep-mobile">Portal</a></nav>
+    <nav class="nav-links"><a href="/pricing">Packages</a><a href="/checkout">Checkout</a><a href="/course" class="keep-mobile">Portal</a></nav>
   </header>
 
   <main class="pending-wrap">
     <div class="container">
-      <div class="spec-label"><span class="dot"></span><span id="pend-ref">AWAITING TRANSFER PROOF</span></div>
-      <h1 class="display-lg" style="margin-top:8px;">Complete Transfer &amp; Paste Reference ID</h1>
+      <div class="spec-label"><span class="dot"></span><span id="pend-ref">WHOP CHECKOUT // AWAITING CONFIRMATION</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">Confirming Whop Payment Settlement</h1>
 
       <div class="pending-grid">
         <section class="spec-card">
-          <div id="inst-body" style="display:grid;gap:14px;">Loading transfer instructions...</div>
-
-          <form id="proof-form" style="margin-top:22px;padding-top:18px;border-top:1px solid var(--rule);display:grid;gap:14px;">
-            <div class="input-group">
-              <label for="tx-id">Transaction Hash (TxID) or Bank Reference ID</label>
-              <input class="input-control mono" id="tx-id" type="text" required minlength="6" placeholder="0x91af... or IBFT-88412">
-            </div>
-            <div class="input-group">
-              <label for="tx-note">Sender Name / Wallet Note (Optional)</label>
-              <input class="input-control" id="tx-note" type="text" placeholder="Sent via Binance TRC20 or SadaPay">
-            </div>
-            <button class="btn btn-commit" type="submit">Submit Proof For Desk Approval</button>
-            <div id="proof-status" class="mono" style="font-size:0.84rem;color:var(--ok);"></div>
-          </form>
+          <div id="inst-body" style="display:grid;gap:14px;">Checking order status in Firebase Firestore...</div>
+          <div style="margin-top:18px;display:flex;gap:10px;flex-wrap:wrap;">
+            <a class="btn btn-commit" href="/checkout">Return to Whop Checkout</a>
+            <a class="btn" href="/dashboard">Open Student Dashboard</a>
+          </div>
         </section>
 
         <aside class="spec-card" style="display:grid;gap:12px;align-content:start;">
           <div class="spec-label">ORDER LEDGER TRACKER</div>
           <div id="order-tracker" class="mono" style="font-size:0.86rem;color:var(--muted);"></div>
-          <div id="qr-container" style="padding:14px;background:var(--ground);border:1px solid var(--rule);display:grid;place-items:center;"></div>
-          <p style="margin:0;color:var(--muted);font-size:0.82rem;">This page polls every 4 seconds. As soon as your transfer clears in Admin Console or IPN, you advance automatically.</p>
+          <p style="margin:0;color:var(--muted);font-size:0.82rem;">This page polls every 3 seconds. Once Whop marks the payment settled, your seat unlocks automatically inside Firebase Firestore.</p>
         </aside>
       </div>
     </div>
   </main>
 
   <script type="module">
-    const ref = new URLSearchParams(location.search).get('ref') || 'ORD-DEMO-CRYPTO';
+    const ref = new URLSearchParams(location.search).get('ref') || '';
     const instBody = document.getElementById('inst-body');
     const tracker = document.getElementById('order-tracker');
-    const qrBox = document.getElementById('qr-container');
-    const proofStatus = document.getElementById('proof-status');
     const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
-    function renderHashMatrixSvg(text) {
-      let hash = 2166136261;
-      for (let i = 0; i < text.length; i++) hash = Math.imul(hash ^ text.charCodeAt(i), 16777619);
-      const size = 15;
-      let cells = '';
-      for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-          const corner = (x < 4 && y < 4) || (x > size - 5 && y < 4) || (x < 4 && y > size - 5);
-          const bit = corner ? ((x === 0 || x === 3 || y === 0 || y === 3 || x === size - 1 || x === size - 4 || y === size - 1 || y === size - 4) || ((x === 1 || x === 2) && (y === 1 || y === 2))) : (((hash >>> ((x * 7 + y * 13) % 31)) ^ (x + y)) & 1);
-          if (bit) cells += `<rect x="${x * 10 + 10}" y="${y * 10 + 10}" width="9" height="9" fill="#e4ecea"/>`;
-        }
-      }
-      return `<svg width="170" height="170" viewBox="0 0 170 170" aria-label="Invoice identifier matrix">${cells}</svg>`;
-    }
-
     async function refreshStatus() {
+      if (!ref) {
+        instBody.innerHTML = `<div style="color:var(--muted);">No order reference provided. Start from <a href="/checkout" style="color:var(--accent);">Whop Checkout</a>.</div>`;
+        return;
+      }
       const res = await fetch(`/api/v1/checkout/orders/${encodeURIComponent(ref)}/status`);
       const data = await res.json();
       if (!res.ok) {
@@ -93,61 +65,18 @@
         location.href = `/checkout/success?ref=${encodeURIComponent(o.order_ref)}`;
         return;
       }
-      const net = o.metadata?.network || 'USDT_TRC20';
-      const netAddress = o.cryptoWallets?.[net] || o.cryptoWallets?.USDT_TRC20 || '';
-      if (o.provider === 'local_pk' && o.localPkBank) {
-        instBody.innerHTML = `
-          <div><div class="mono" style="font-size:11px;color:var(--accent);">AMOUNT TO TRANSFER (PKR)</div><div class="num" style="font-size:1.8rem;font-weight:700;">Rs. ${o.pkrAmount.toLocaleString('en-US')} PKR</div></div>
-          <div class="addr-box"><span>${esc(o.localPkBank.bankName)} · Title: ${esc(o.localPkBank.bankTitle)}</span></div>
-          <div class="addr-box"><span id="copy-target">${esc(o.localPkBank.iban)}</span><button type="button" class="btn" id="copy-btn" style="min-height:32px;font-size:11px;">Copy IBAN</button></div>
-          <div class="mono" style="font-size:12px;color:var(--muted);">JazzCash / Easypaisa wallet: ${esc(o.localPkBank.jazzcash)}</div>
-        `;
-        qrBox.innerHTML = renderHashMatrixSvg(o.localPkBank.iban + o.order_ref);
-      } else {
-        instBody.innerHTML = `
-          <div><div class="mono" style="font-size:11px;color:var(--accent);">EXACT STABLECOIN AMOUNT (${esc(net)})</div><div class="num" style="font-size:1.8rem;font-weight:700;">$${(o.final_cents / 100).toFixed(2)} USD</div></div>
-          <div class="addr-box"><span id="copy-target">${esc(netAddress)}</span><button type="button" class="btn" id="copy-btn" style="min-height:32px;font-size:11px;">Copy Wallet</button></div>
-          <div class="mono" style="font-size:12px;color:var(--muted);">Send exclusively on <strong>${esc(net)}</strong> to avoid loss of funds.</div>
-        `;
-        qrBox.innerHTML = renderHashMatrixSvg(netAddress);
-      }
-
-      document.getElementById('copy-btn')?.addEventListener('click', async () => {
-        const val = document.getElementById('copy-target')?.textContent || '';
-        await navigator.clipboard?.writeText(val);
-        document.getElementById('copy-btn').textContent = 'Copied';
-      });
-
+      instBody.innerHTML = `
+        <div><div class="mono" style="font-size:11px;color:var(--accent);">AMOUNT DUE (USD)</div><div class="num" style="font-size:1.8rem;font-weight:700;">$${(o.final_cents / 100).toFixed(2)} USD</div></div>
+        <div style="color:var(--muted);font-size:0.9rem;">Provider: <strong style="color:var(--ink)">${esc(o.provider)}</strong>. Finish payment inside Whop Checkout or wait a moment for webhook confirmation.</div>
+      `;
       tracker.innerHTML = `
         <div>PACKAGE: <strong style="color:var(--ink)">${esc(o.package_name)}</strong></div>
-        <div>STATUS: <strong style="color:var(--accent)">${esc(o.status.toUpperCase())}</strong></div>
-        ${o.proof_text ? `<div style="margin-top:6px;">SUBMITTED PROOF: <code>${esc(o.proof_text)}</code></div>` : ''}
+        <div>STATUS: <strong style="color:var(--accent)">${esc(String(o.status).toUpperCase())}</strong></div>
       `;
     }
 
-    document.getElementById('proof-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const res = await fetch(`/api/v1/checkout/orders/${encodeURIComponent(ref)}/proof`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          txId: document.getElementById('tx-id').value,
-          senderNote: document.getElementById('tx-note').value,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        proofStatus.style.color = 'var(--fail)';
-        proofStatus.textContent = data.error || 'Could not submit proof.';
-        return;
-      }
-      proofStatus.style.color = 'var(--ok)';
-      proofStatus.textContent = `Proof logged (${data.status}). Admin approval inside /admin unlocks your seat instantly.`;
-      refreshStatus();
-    });
-
     refreshStatus();
-    setInterval(refreshStatus, 4000);
+    setInterval(refreshStatus, 3000);
   </script>
 </body>
 </html>

@@ -167,7 +167,7 @@
             telegramHandle: document.getElementById('p-telegram').value,
           }),
         });
-        document.getElementById('prof-msg').textContent = res.ok ? 'Profile saved to SQLite.' : 'Failed to update profile.';
+        document.getElementById('prof-msg').textContent = res.ok ? 'Profile saved to Firebase Firestore.' : 'Failed to update profile.';
       });
     }
     load();

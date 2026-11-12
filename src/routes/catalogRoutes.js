@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import { config } from '../config.js';
+import { resolveWhopPlanId } from '../services/entitlementService.js';
 
 const router = Router();
 
-router.get('/packages', (req, res) => {
-  const rows = req.db.prepare('SELECT * FROM packages WHERE is_active = 1 ORDER BY tier_level ASC').all();
+router.get('/packages', async (req, res) => {
+  const rows = await req.store.listActivePackages();
   const highestPaid = req.user ? req.user.highest_paid_cents : 0;
   const maxTier = req.user ? req.user.max_tier_level : 0;
 
@@ -23,7 +24,7 @@ router.get('/packages', (req, res) => {
       tagline: p.tagline,
       badge_code: p.badge_code,
       features: JSON.parse(p.features_json || '[]'),
-      whop_plan_id: p.whop_plan_id || config.payments.whop.plans[p.slug] || '',
+      whop_plan_id: resolveWhopPlanId(p),
     };
   });
 
@@ -31,28 +32,32 @@ router.get('/packages', (req, res) => {
     packages,
     paymentRails: {
       whopEnabled: config.payments.whopEnabled,
+      whopDefaultPlanId: config.payments.whop.defaultPlanId,
       allowSandbox: config.payments.allowSandbox,
       enableCryptoManual: config.payments.enableCryptoManual,
       enableCryptoAuto: config.payments.enableCryptoAuto,
       enableLocalPk: config.payments.enableLocalPk,
-      pkrUsdRate: config.payments.pkrUsdRate,
     },
   });
 });
 
-router.get('/curriculum', (req, res) => {
+router.get('/curriculum', async (req, res) => {
   const userTier = req.user ? req.user.max_tier_level : 0;
-  const modules = req.db.prepare('SELECT * FROM modules ORDER BY order_index ASC').all();
-  const lessons = req.db
-    .prepare(
-      'SELECT id, module_id, order_index, title, slug, is_free_preview, duration_sec FROM lessons ORDER BY order_index ASC'
-    )
-    .all();
+  const [modules, allLessons] = await Promise.all([req.store.listModules(), req.store.listLessons()]);
 
   const lessonsByMod = new Map();
-  for (const l of lessons) {
+  for (const l of allLessons) {
+    const summary = {
+      id: l.id,
+      module_id: l.module_id,
+      order_index: l.order_index,
+      title: l.title,
+      slug: l.slug,
+      is_free_preview: Boolean(l.is_free_preview),
+      duration_sec: l.duration_sec,
+    };
     if (!lessonsByMod.has(l.module_id)) lessonsByMod.set(l.module_id, []);
-    lessonsByMod.get(l.module_id).push(l);
+    lessonsByMod.get(l.module_id).push(summary);
   }
 
   const result = modules.map((m) => ({
@@ -60,25 +65,15 @@ router.get('/curriculum', (req, res) => {
     unlocked: userTier >= m.min_tier_level,
     lessons: (lessonsByMod.get(m.id) || []).map((l) => ({
       ...l,
-      is_free_preview: Boolean(l.is_free_preview),
-      accessible: userTier >= m.min_tier_level || Boolean(l.is_free_preview),
+      accessible: userTier >= m.min_tier_level || l.is_free_preview,
     })),
   }));
 
   res.json({ modules: result, userTier });
 });
 
-router.get('/certificates/:serial', (req, res) => {
-  const row = req.db
-    .prepare(`
-      SELECT c.serial_code, c.tier_level, c.issued_at, u.full_name, p.name AS package_name
-      FROM certificates c
-      JOIN users u ON u.id = c.user_id
-      JOIN packages p ON p.tier_level = c.tier_level
-      WHERE c.serial_code = ?
-    `)
-    .get(String(req.params.serial || '').trim().toUpperCase());
-
+router.get('/certificates/:serial', async (req, res) => {
+  const row = await req.store.getCertificateBySerialWithDetails(req.params.serial);
   if (!row) {
     return res.status(404).json({ error: 'Certificate serial code not found.' });
   }
@@ -86,4 +81,3 @@ router.get('/certificates/:serial', (req, res) => {
 });
 
 export default router;
-

@@ -14,29 +14,40 @@ test('VERNIER Core API: Catalog, Auth, Lesson Gating, Progress & Certificate Ver
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vernier-api-'));
   const dbPath = path.join(tmpDir, 'test.sqlite');
   const app = createApp({ dbPath });
+  await app.locals.readyPromise;
   const server = app.listen(0);
   const port = server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  t.after(() => {
+  t.after(async () => {
     server.close();
-    try { app.locals.db.close(); } catch {}
+    try {
+      await app.locals.db.close();
+    } catch {}
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  await t.test('healthcheck & packages ($1, $25, $100, $500) + 13 modules / 39 lessons', async () => {
+  await t.test('healthcheck & packages ($1, $25, $100, $500) + Whop exclusive rails + 13 modules / 39 lessons', async () => {
     const hRes = await fetch(`${baseUrl}/api/health`);
     assert.equal(hRes.status, 200);
     const h = await hRes.json();
     assert.equal(h.ok, true);
+    assert.equal(h.whopEnabled, true);
+    assert.equal(h.whopDefaultPlanId, 'plan_CTX7xd3gUPsgD');
+    assert.equal(h.sandboxEnabled, false);
 
     const pRes = await fetch(`${baseUrl}/api/v1/catalog/packages`);
     assert.equal(pRes.status, 200);
-    const { packages } = await pRes.json();
+    const { packages, paymentRails } = await pRes.json();
     assert.deepEqual(
       packages.map((p) => p.price_cents),
       [100, 2500, 10000, 50000]
     );
+    assert.equal(packages[0].whop_plan_id, 'plan_CTX7xd3gUPsgD');
+    assert.equal(paymentRails.whopEnabled, true);
+    assert.equal(paymentRails.allowSandbox, false);
+    assert.equal(paymentRails.enableCryptoManual, false);
+    assert.equal(paymentRails.enableLocalPk, false);
 
     const cRes = await fetch(`${baseUrl}/api/v1/catalog/curriculum`);
     assert.equal(cRes.status, 200);

@@ -248,7 +248,7 @@ async function curriculumView(ctx) {
   await loadBootstrap();
 
   if (ctx.state === 'loading') return renderLoadingKpis('Curriculum Directory', 'Indexing 39 playbooks across 13 modules...');
-  if (ctx.state === 'error') return `<div class="page-head" data-region="head"><h1>Curriculum Directory</h1></div>` + renderStateNote('error', 'Failed to index lessons.', 'Retry loading the SQLite syllabus cache.', '#/curriculum', 'Retry Load');
+  if (ctx.state === 'error') return `<div class="page-head" data-region="head"><h1>Curriculum Directory</h1></div>` + renderStateNote('error', 'Failed to index lessons.', 'Retry loading the Firestore syllabus cache.', '#/curriculum', 'Retry Load');
   if (ctx.state === 'denied') return `<div class="page-head" data-region="head"><h1>Curriculum Directory</h1></div>` + renderStateNote('denied', 'Seat Required', 'Authenticate or purchase a tier to access locked desk files.', '/login', 'Sign In');
   if (ctx.state === 'empty') return `<div class="page-head" data-region="head"><h1>Curriculum Directory</h1></div>` + renderStateNote('empty', 'Zero Lessons Matched Query', 'Reset tier and keyword filters to inspect all 39 playbooks.', '#/curriculum', 'Show All Modules');
   if (ctx.state === 'done') return `<div class="page-head" data-region="head"><h1>Curriculum Directory</h1></div>` + renderStateNote('done', 'All Filtered Lessons Completed', 'Clear filter or claim graduate serial inside Certificates & Audit.', '#/community', 'Open Certificates');
@@ -346,7 +346,7 @@ async function lessonView(ctx) {
     `;
   }
   if (!res.ok) {
-    return `<div class="page-head" data-region="head"><h1>Lesson Missing</h1></div>` + renderStateNote('error', 'Playbook not found.', `Slug "${slug}" is not present in SQLite.`, '#/curriculum', 'Return to Syllabus');
+    return `<div class="page-head" data-region="head"><h1>Lesson Missing</h1></div>` + renderStateNote('error', 'Playbook not found.', `Slug "${slug}" is not present in Firestore.`, '#/curriculum', 'Return to Syllabus');
   }
 
   const { lesson } = await res.json();
@@ -413,7 +413,7 @@ async function lessonView(ctx) {
 
     btnSaveNotes?.addEventListener('click', () => {
       const notesText = document.getElementById('lesson-notes')?.value || '';
-      saveProgress({ notesText }, 'Desk notes saved to SQLite.');
+      saveProgress({ notesText }, 'Desk notes saved to Firestore.');
     });
 
     btnCheckQuiz?.addEventListener('click', () => {
@@ -542,7 +542,7 @@ async function journalView(ctx) {
   markActiveNav('/tools/journal');
   await loadBootstrap();
 
-  if (ctx.state === 'loading') return renderLoadingKpis('Trade Execution Journal', 'Querying SQLite R-multiple history...');
+  if (ctx.state === 'loading') return renderLoadingKpis('Trade Execution Journal', 'Querying Firestore R-multiple history...');
   if (ctx.state === 'error') return `<div class="page-head" data-region="head" data-region-grow><h1>Trade Execution Journal</h1></div>` + renderStateNote('error', 'Failed to read journal entries.', 'Check session state and retry.', '#/tools/journal', 'Retry Sync');
 
   if (ctx.state === 'denied' || (stateStore.user && stateStore.user.max_tier_level < 2)) {
@@ -593,7 +593,7 @@ async function journalView(ctx) {
         }),
       });
       if (!res.ok) return toast('Failed to record trade.');
-      toast('Trade logged to SQLite.');
+      toast('Trade logged to Firestore.');
       stateStore.loaded = false;
       ctx.refresh();
     });

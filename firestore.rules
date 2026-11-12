@@ -1,0 +1,197 @@
+rules_version = '2';
+
+// ============================================================================
+// VERNIER Crypto Academy — Cloud Firestore Security Rules
+// ============================================================================
+//
+// Security Architecture: Strict Server-Only Access (Default Deny All Clients)
+// ----------------------------------------------------------------------------
+// All Firestore reads and writes in VERNIER Crypto Academy execute strictly
+// server-side from our Express.js / Vercel Node.js backend using the
+// `firebase-admin` SDK authenticated via service account credentials.
+// `firebase-admin` operates with privileged IAM credentials and bypasses
+// Cloud Firestore Security Rules.
+//
+// There is NO browser or mobile Firebase Client SDK access to Firestore and
+// NO Firebase Auth client-token session model. Authentication relies on
+// server-verified scrypt password hashes and SHA-256 hashed tokens stored in
+// HttpOnly session cookies (`vernier_sid`), while curriculum tier gating,
+// checkout quotes, payment settlement, and webhook verification execute
+// exclusively behind Express API routes (`/api/v1/*`).
+//
+// Accordingly, every collection and recursive subcollection path below is
+// explicitly locked down with `allow read, write: if false;` so zero PII,
+// credential hashes, session tokens, paid lesson content, orders, coupons,
+// or webhook payloads can ever be read or tampered with via Firestore client
+// SDKs or public Firestore REST endpoints (`firestore.googleapis.com`).
+// ============================================================================
+
+// ============================================================================
+// Assumed Data Model
+// ============================================================================
+//
+// Collection: _meta
+//   Fields: counters, seed state (internal backend operational metadata)
+//
+// Collection: users
+//   Fields: email (string), password_hash (string, scrypt salt:key),
+//           full_name (string), role ('student' | 'admin'), country (string),
+//           discord_handle (string), telegram_handle (string), created_at
+//
+// Collection: sessions
+//   Fields: user_id, token_hash (string, sha256), expires_at, created_at
+//
+// Collection: password_resets
+//   Fields: user_id, token_hash (string, sha256), expires_at, used_at
+//
+// Collection: packages
+//   Fields: slug, name, tier_level (1..4), price_cents, tagline, badge_code,
+//           features_json, whop_plan_id, lemon_variant_id, is_active
+//
+// Collection: modules
+//   Fields: min_tier_level (1..4), order_index, level_badge, title, slug,
+//           summary, estimated_minutes
+//
+// Collection: lessons
+//   Fields: module_id, order_index, title, slug, is_free_preview,
+//           video_provider, video_url, duration_sec, content_markdown,
+//           diagram_config_json, quiz_json, resources_json
+//
+// Collection: coupons
+//   Fields: code, discount_type ('percent' | 'fixed'), discount_value,
+//           min_tier_level, max_uses, used_count, valid_until, is_active
+//
+// Collection: orders
+//   Fields: order_ref, user_id, package_id, provider, provider_payment_id,
+//           gross_cents, upgrade_credit_cents, discount_cents, final_cents,
+//           currency, coupon_code, status, proof_text, metadata_json,
+//           created_at, paid_at
+//
+// Collection: enrollments
+//   Fields: user_id, package_id, tier_level, source_order_id,
+//           status ('active' | 'upgraded' | 'revoked'), granted_at
+//
+// Collection: lesson_progress
+//   Fields: user_id, lesson_id, completed, watched_seconds, quiz_passed,
+//           notes_text, updated_at
+//
+// Collection: trade_journal_entries
+//   Fields: user_id, pair, direction ('LONG' | 'SHORT'), entry_price,
+//           stop_loss, take_profit, risk_pct, result_r, setup_tag, notes,
+//           created_at
+//
+// Collection: certificates
+//   Fields: serial_code, user_id, tier_level, issued_at
+//
+// Collection: mentorship_audits
+//   Fields: user_id, portfolio_size_usd, focus_pair, question_text,
+//           status ('queued' | 'reviewed'), mentor_feedback, created_at
+//
+// Collection: webhook_events
+//   Fields: provider, event_id, event_type, signature_valid, payload_json,
+//           processed, error_message, received_at
+// ============================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ------------------------------------------------------------------------
+    // Internal System Metadata
+    // Protects sequential ID counters and one-time seed state from tampering.
+    // ------------------------------------------------------------------------
+    match /_meta/{metaId} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // Identity, Credentials & Auth Tokens
+    // Protects PII (email, handles, country), scrypt password_hash values,
+    // role privilege flags, HttpOnly session hashes, and reset tokens.
+    // ------------------------------------------------------------------------
+    match /users/{userId} {
+      allow read, write: if false;
+    }
+
+    match /sessions/{sessionId} {
+      allow read, write: if false;
+    }
+
+    match /password_resets/{resetId} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // Catalog & Paid Curriculum (Server-Gated via /api/v1/catalog & /course)
+    // Protects Whop/Lemon plan mappings, paid lesson markdown/video URLs,
+    // quizzes, and downloadable resources from unauthenticated REST scraping.
+    // ------------------------------------------------------------------------
+    match /packages/{packageId} {
+      allow read, write: if false;
+    }
+
+    match /modules/{moduleId} {
+      allow read, write: if false;
+    }
+
+    match /lessons/{lessonId} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // Promotions, Orders & Tier Entitlements
+    // Prevents coupon code enumeration, payment/proof leakage, and client-side
+    // privilege or tier escalation via forged orders or enrollments.
+    // ------------------------------------------------------------------------
+    match /coupons/{couponCode} {
+      allow read, write: if false;
+    }
+
+    match /orders/{orderId} {
+      allow read, write: if false;
+    }
+
+    match /enrollments/{enrollmentId} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // Student Workspace, Progress & Credentials
+    // Protects private student lesson notes, Tier 2+ trade journal entries,
+    // Tier 4 mentorship portfolio audits, and certificate user_id mappings
+    // (public verification is served selectively by Express via serial lookup).
+    // ------------------------------------------------------------------------
+    match /lesson_progress/{progressId} {
+      allow read, write: if false;
+    }
+
+    match /trade_journal_entries/{entryId} {
+      allow read, write: if false;
+    }
+
+    match /certificates/{certificateId} {
+      allow read, write: if false;
+    }
+
+    match /mentorship_audits/{auditId} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // Payment Provider Webhooks
+    // Protects raw Whop / NOWPayments event payloads, signature diagnostics,
+    // buyer metadata, and idempotency records from public disclosure.
+    // ------------------------------------------------------------------------
+    match /webhook_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    // ------------------------------------------------------------------------
+    // Default-Deny Recursive Catch-All
+    // Ensures any nested subcollections or future collections remain closed to
+    // all client SDK and REST requests unless explicitly opened later.
+    // ------------------------------------------------------------------------
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

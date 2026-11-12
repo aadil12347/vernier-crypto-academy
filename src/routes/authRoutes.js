@@ -13,31 +13,27 @@ import { createRateLimiter } from '../middleware/rateLimit.js';
 const router = Router();
 const authLimiter = createRateLimiter({ windowMs: 60_000, max: 30, keyPrefix: 'auth' });
 
-router.post('/register', authLimiter, (req, res, next) => {
+router.post('/register', authLimiter, async (req, res, next) => {
   try {
     const { email, password, fullName, country } = req.body || {};
-    const userId = registerUser(req.db, { email, password, fullName, country });
-    const { rawToken } = createSession(req.db, userId);
+    const userId = await registerUser(req.store, { email, password, fullName, country });
+    const { rawToken } = await createSession(req.store, userId);
     setSessionCookie(res, rawToken);
-    const user = req.db
-      .prepare('SELECT id, email, full_name, role, country, discord_handle, telegram_handle FROM users WHERE id = ?')
-      .get(userId);
+    const user = await req.store.getPublicUserById(userId);
     res.status(201).json({ user: { ...user, max_tier_level: 0, highest_paid_cents: 0, enrollments: [] } });
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/login', authLimiter, (req, res, next) => {
+router.post('/login', authLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
-    const user = req.db
-      .prepare('SELECT * FROM users WHERE email = ?')
-      .get(String(email || '').trim().toLowerCase());
+    const user = await req.store.getUserByEmail(email);
     if (!user || !verifyPassword(password, user.password_hash)) {
       return res.status(401).json({ error: 'Invalid email or password.', code: 'INVALID_CREDENTIALS', requestId: req.requestId });
     }
-    const { rawToken } = createSession(req.db, user.id);
+    const { rawToken } = await createSession(req.store, user.id);
     setSessionCookie(res, rawToken);
     res.json({
       user: {
@@ -53,9 +49,9 @@ router.post('/login', authLimiter, (req, res, next) => {
   }
 });
 
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   if (req.sessionToken) {
-    deleteSession(req.db, req.sessionToken);
+    await deleteSession(req.store, req.sessionToken);
   }
   clearSessionCookie(res);
   res.json({ ok: true });
@@ -65,25 +61,20 @@ router.get('/me', (req, res) => {
   res.json({ user: req.user || null });
 });
 
-router.patch('/profile', requireAuth, (req, res) => {
+router.patch('/profile', requireAuth, async (req, res) => {
   const { fullName, country, discordHandle, telegramHandle } = req.body || {};
-  req.db
-    .prepare(
-      'UPDATE users SET full_name = ?, country = ?, discord_handle = ?, telegram_handle = ? WHERE id = ?'
-    )
-    .run(
-      String(fullName || req.user.full_name).trim().slice(0, 80),
-      String(country || req.user.country).trim().slice(0, 40),
-      String(discordHandle ?? req.user.discord_handle).trim().slice(0, 64),
-      String(telegramHandle ?? req.user.telegram_handle).trim().slice(0, 64),
-      req.user.id
-    );
+  await req.store.updateUserProfile(req.user.id, {
+    fullName: String(fullName || req.user.full_name).trim().slice(0, 80),
+    country: String(country || req.user.country).trim().slice(0, 40),
+    discordHandle: String(discordHandle ?? req.user.discord_handle).trim().slice(0, 64),
+    telegramHandle: String(telegramHandle ?? req.user.telegram_handle).trim().slice(0, 64),
+  });
   res.json({ ok: true });
 });
 
-router.post('/forgot-password', authLimiter, (req, res) => {
+router.post('/forgot-password', authLimiter, async (req, res) => {
   const { email } = req.body || {};
-  const reset = createPasswordReset(req.db, email);
+  const reset = await createPasswordReset(req.store, email);
   // In development, echo reset token cleanly for testing; in production send via email provider
   res.json({
     ok: true,
@@ -92,12 +83,12 @@ router.post('/forgot-password', authLimiter, (req, res) => {
   });
 });
 
-router.post('/reset-password', authLimiter, (req, res) => {
+router.post('/reset-password', authLimiter, async (req, res) => {
   const { token, newPassword } = req.body || {};
   if (!newPassword || String(newPassword).length < 8) {
     return res.status(400).json({ error: 'New password must be at least 8 characters.' });
   }
-  const ok = consumePasswordReset(req.db, token, newPassword);
+  const ok = await consumePasswordReset(req.store, token, newPassword);
   if (!ok) {
     return res.status(400).json({ error: 'Reset token is invalid or expired.' });
   }
@@ -105,4 +96,3 @@ router.post('/reset-password', authLimiter, (req, res) => {
 });
 
 export default router;
-

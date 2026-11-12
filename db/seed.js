@@ -1,6 +1,6 @@
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getDb } from './connection.js';
-import { runMigrations } from './migrate.js';
+import { getStore, closeStore } from './store.js';
 import { hashPassword } from '../src/services/authService.js';
 import { config } from '../src/config.js';
 
@@ -470,162 +470,137 @@ const LESSONS = [
   },
 ];
 
-export function seedDatabase(db = getDb()) {
-  runMigrations(db);
+const COUPONS = [
+  { code: 'TEST100', discountType: 'percent', discountValue: 100, minTierLevel: 1, maxUses: 5000 },
+  { code: 'FOUNDER20', discountType: 'percent', discountValue: 20, minTierLevel: 2, maxUses: 1000 },
+  { code: 'DESK10', discountType: 'fixed', discountValue: 1000, minTierLevel: 3, maxUses: 500 },
+];
 
-  // 1. Seed Packages ($1, $25, $100, $500)
-  const insertPkg = db.prepare(`
-    INSERT INTO packages (slug, name, tier_level, price_cents, tagline, badge_code, features_json, whop_plan_id, is_active)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
-    ON CONFLICT(slug) DO UPDATE SET
-      name = excluded.name,
-      tier_level = excluded.tier_level,
-      price_cents = excluded.price_cents,
-      tagline = excluded.tagline,
-      badge_code = excluded.badge_code,
-      features_json = excluded.features_json,
-      whop_plan_id = COALESCE(NULLIF(packages.whop_plan_id, ''), excluded.whop_plan_id)
-  `);
-  for (const p of PACKAGES) {
-    insertPkg.run(p.slug, p.name, p.tier_level, p.price_cents, p.tagline, p.badge_code, JSON.stringify(p.features), p.whop_plan_id);
+export async function seedDatabase(store = getStore(), { force = false } = {}) {
+  if (typeof store.init === 'function') {
+    await store.init();
   }
 
-  // 2. Seed Modules
-  const insertMod = db.prepare(`
-    INSERT INTO modules (min_tier_level, order_index, level_badge, title, slug, summary, estimated_minutes)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(slug) DO UPDATE SET
-      min_tier_level = excluded.min_tier_level,
-      order_index = excluded.order_index,
-      level_badge = excluded.level_badge,
-      title = excluded.title,
-      summary = excluded.summary,
-      estimated_minutes = excluded.estimated_minutes
-  `);
-  for (const m of MODULES) {
-    insertMod.run(m.min_tier, m.idx, m.level, m.title, m.slug, m.summary, m.mins);
+  // Fast skip on warm Cloud Firestore / SQLite when catalog + plan IDs are already present
+  if (!force && (await store.isCatalogSeeded(LESSONS.length))) {
+    return;
   }
 
-  const modMap = new Map(db.prepare('SELECT id, slug FROM modules').all().map((r) => [r.slug, r.id]));
+  await store.upsertCatalog({
+    packages: PACKAGES,
+    modules: MODULES,
+    lessons: LESSONS,
+    coupons: COUPONS,
+  });
 
-  // 3. Seed Lessons
-  const insertLesson = db.prepare(`
-    INSERT INTO lessons (module_id, order_index, title, slug, is_free_preview, video_provider, video_url, duration_sec, content_markdown, diagram_config_json, quiz_json, resources_json)
-    VALUES (?, ?, ?, ?, ?, 'blueprint', '', ?, ?, ?, ?, ?)
-    ON CONFLICT(slug) DO UPDATE SET
-      module_id = excluded.module_id,
-      order_index = excluded.order_index,
-      title = excluded.title,
-      is_free_preview = excluded.is_free_preview,
-      duration_sec = excluded.duration_sec,
-      content_markdown = excluded.content_markdown,
-      diagram_config_json = excluded.diagram_config_json,
-      quiz_json = excluded.quiz_json,
-      resources_json = excluded.resources_json
-  `);
+  // Seed Dev Admin & Demo Student Accounts (only if not yet present)
+  await store.ensureSeedUser({
+    email: 'admin@vernier.academy',
+    passwordHash: hashPassword('AdminVernier!2026'),
+    fullName: 'Vernier Lead Desk',
+    role: 'admin',
+    country: 'PK',
+  });
+  const starterStudentId = await store.ensureSeedUser({
+    email: 'student@vernier.academy',
+    passwordHash: hashPassword('TraderTest!2026'),
+    fullName: 'Marcus Vance (Demo $1)',
+    role: 'student',
+    country: 'US',
+  });
+  const vaultStudentId = await store.ensureSeedUser({
+    email: 'pro@vernier.academy',
+    passwordHash: hashPassword('VaultTest!2026'),
+    fullName: 'Elena Rostova (Demo $500)',
+    role: 'student',
+    country: 'US',
+  });
 
-  for (const l of LESSONS) {
-    const modId = modMap.get(l.mod);
-    const resources = [
-      { label: 'Execution Checklist Sheet', type: 'checklist', slug: l.slug },
-      { label: 'Interactive Blueprint Plate', type: 'blueprint', mode: l.diagram.mode },
-    ];
-    insertLesson.run(
-      modId,
-      l.idx,
-      l.title,
-      l.slug,
-      l.preview ? 1 : 0,
-      l.dur,
-      l.md,
-      JSON.stringify(l.diagram),
-      JSON.stringify(l.quiz),
-      JSON.stringify(resources)
-    );
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400_000).toISOString();
+  const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
+
+  // Give Demo Starter student Tier 1 ($1) & sample Whop order if they have 0 enrollments
+  if (!(await store.hasUserEnrollments(starterStudentId))) {
+    const p1 = await store.getPackageBySlug('starter-pass');
+    if (p1) {
+      await store.seedOrderAndEnrollment({
+        orderRef: 'ORD-DEMO-0001',
+        userId: starterStudentId,
+        packageId: p1.id,
+        tierLevel: 1,
+        provider: 'whop',
+        providerPaymentId: 'pay_whop_demo_1',
+        grossCents: 100,
+        finalCents: 100,
+        paidAt: threeDaysAgo,
+      });
+    }
   }
 
-  // 4. Seed Coupons
-  const insertCoupon = db.prepare(`
-    INSERT INTO coupons (code, discount_type, discount_value, min_tier_level, max_uses, is_active)
-    VALUES (?, ?, ?, ?, ?, 1)
-    ON CONFLICT(code) DO NOTHING
-  `);
-  insertCoupon.run('TEST100', 'percent', 100, 1, 5000);
-  insertCoupon.run('FOUNDER20', 'percent', 20, 2, 1000);
-  insertCoupon.run('DESK10', 'fixed', 1000, 3, 500);
-
-  // 5. Seed Dev Admin & Demo Student Accounts (only if not yet present)
-  const ensureUser = (email, password, fullName, role, country) => {
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-    if (existing) return existing.id;
-    const info = db
-      .prepare('INSERT INTO users (email, password_hash, full_name, role, country) VALUES (?, ?, ?, ?, ?)')
-      .run(email, hashPassword(password), fullName, role, country);
-    return Number(info.lastInsertRowid);
-  };
-
-  ensureUser('admin@vernier.academy', 'AdminVernier!2026', 'Vernier Lead Desk', 'admin', 'PK');
-  const starterStudentId = ensureUser('student@vernier.academy', 'TraderTest!2026', 'Marcus Vance (Demo $1)', 'student', 'US');
-  const vaultStudentId = ensureUser('pro@vernier.academy', 'VaultTest!2026', 'Elena Rostova (Demo $500)', 'student', 'US');
-
-  // Give Demo Starter student Tier 1 ($1) & sample order if they have 0 enrollments
-  const pkgMap = new Map(db.prepare('SELECT id, slug, tier_level, price_cents FROM packages').all().map((r) => [r.slug, r]));
-  const starterCount = db.prepare('SELECT COUNT(*) AS c FROM enrollments WHERE user_id = ?').get(starterStudentId).c;
-  if (starterCount === 0) {
-    const p1 = pkgMap.get('starter-pass');
-    const o1 = db
-      .prepare(`
-        INSERT INTO orders (order_ref, user_id, package_id, provider, provider_payment_id, gross_cents, final_cents, status, paid_at)
-        VALUES ('ORD-DEMO-0001', ?, ?, 'sandbox', 'SBX-DEMO-1', 100, 100, 'paid', datetime('now', '-3 days'))
-      `)
-      .run(starterStudentId, p1.id);
-    db.prepare('INSERT INTO enrollments (user_id, package_id, tier_level, source_order_id, status) VALUES (?, ?, 1, ?, \'active\')').run(
-      starterStudentId,
-      p1.id,
-      Number(o1.lastInsertRowid)
-    );
-  }
-
-  // Give Demo Vault student Tier 4 ($500) + sample pending crypto order for /admin queue testing
-  const vaultCount = db.prepare('SELECT COUNT(*) AS c FROM enrollments WHERE user_id = ?').get(vaultStudentId).c;
-  if (vaultCount === 0) {
-    const p4 = pkgMap.get('institutional-vault');
-    const o4 = db
-      .prepare(`
-        INSERT INTO orders (order_ref, user_id, package_id, provider, provider_payment_id, gross_cents, final_cents, status, paid_at)
-        VALUES ('ORD-DEMO-0500', ?, ?, 'sandbox', 'SBX-DEMO-500', 50000, 50000, 'paid', datetime('now', '-7 days'))
-      `)
-      .run(vaultStudentId, p4.id);
-    db.prepare('INSERT INTO enrollments (user_id, package_id, tier_level, source_order_id, status) VALUES (?, ?, 4, ?, \'active\')').run(
-      vaultStudentId,
-      p4.id,
-      Number(o4.lastInsertRowid)
-    );
-    db.prepare(`
-      INSERT INTO certificates (serial_code, user_id, tier_level) VALUES ('VRN-2026-T4-DEMO01', ?, 4)
-      ON CONFLICT(serial_code) DO NOTHING
-    `).run(vaultStudentId);
-
-    // Seed 1 awaiting-review manual crypto order so Admin Queue has a live lit task to test immediately
-    const p3 = pkgMap.get('pro-orderflow');
-    db.prepare(`
-      INSERT INTO orders (order_ref, user_id, package_id, provider, gross_cents, final_cents, status, proof_text, created_at)
-      VALUES ('ORD-DEMO-CRYPTO', ?, ?, 'crypto_manual', 10000, 10000, 'awaiting_review', '0x9f4a82e7b1c034d998a11demo928374txid | Binance TRC20', datetime('now', '-2 hours'))
-      ON CONFLICT(order_ref) DO NOTHING
-    `).run(starterStudentId, p3.id);
-
-    // Sample trade journal entries for Tier 4 demo user
-    db.prepare(`
-      INSERT INTO trade_journal_entries (user_id, pair, direction, entry_price, stop_loss, take_profit, risk_pct, result_r, setup_tag, notes)
-      VALUES
-        (?, 'BTC/USDT', 'LONG', 88400, 87650, 90650, 1.0, 3.0, 'BSL_SWEEP+FVG', 'NY open swept Asia low + 15m MSS displacement.'),
-        (?, 'ETH/USDT', 'SHORT', 3240, 3290, 3140, 1.0, -1.0, 'OB_TAP', 'Stopped cleanly; waited for next NY sweep.'),
-        (?, 'SOL/USDT', 'LONG', 178.5, 174.2, 189.2, 1.0, 2.49, 'SPOT_CVD_ABSORB', 'Spot CVD rising while perp funding went negative.')
-    `).run(vaultStudentId, vaultStudentId, vaultStudentId);
+  // Give Demo Vault student Tier 4 ($500) + verified certificate + sample trade journal entries
+  if (!(await store.hasUserEnrollments(vaultStudentId))) {
+    const p4 = await store.getPackageBySlug('institutional-vault');
+    if (p4) {
+      await store.seedOrderAndEnrollment({
+        orderRef: 'ORD-DEMO-0500',
+        userId: vaultStudentId,
+        packageId: p4.id,
+        tierLevel: 4,
+        provider: 'whop',
+        providerPaymentId: 'pay_whop_demo_500',
+        grossCents: 50000,
+        finalCents: 50000,
+        paidAt: sevenDaysAgo,
+      });
+      await store.ensureCertificate({
+        serialCode: 'VRN-2026-T4-DEMO01',
+        userId: vaultStudentId,
+        tierLevel: 4,
+      });
+      await store.seedJournalEntries([
+        {
+          userId: vaultStudentId,
+          pair: 'BTC/USDT',
+          direction: 'LONG',
+          entryPrice: 88400,
+          stopLoss: 87650,
+          takeProfit: 90650,
+          riskPct: 1.0,
+          resultR: 3.0,
+          setupTag: 'BSL_SWEEP+FVG',
+          notes: 'NY open swept Asia low + 15m MSS displacement.',
+        },
+        {
+          userId: vaultStudentId,
+          pair: 'ETH/USDT',
+          direction: 'SHORT',
+          entryPrice: 3240,
+          stopLoss: 3290,
+          takeProfit: 3140,
+          riskPct: 1.0,
+          resultR: -1.0,
+          setupTag: 'OB_TAP',
+          notes: 'Stopped cleanly; waited for next NY sweep.',
+        },
+        {
+          userId: vaultStudentId,
+          pair: 'SOL/USDT',
+          direction: 'LONG',
+          entryPrice: 178.5,
+          stopLoss: 174.2,
+          takeProfit: 189.2,
+          riskPct: 1.0,
+          resultR: 2.49,
+          setupTag: 'SPOT_CVD_ABSORB',
+          notes: 'Spot CVD rising while perp funding went negative.',
+        },
+      ]);
+    }
   }
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  seedDatabase();
-  console.log('Seed completed cleanly: 4 packages ($1, $25, $100, $500), 13 modules, 38 lessons.');
+if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
+  await seedDatabase(getStore(), { force: true });
+  console.log('Seed completed cleanly: 4 packages ($1, $25, $100, $500), 13 modules, 39 lessons.');
+  await closeStore();
 }

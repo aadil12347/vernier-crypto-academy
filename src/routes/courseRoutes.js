@@ -4,53 +4,44 @@ import { issueCertificateForUser } from '../services/certificateService.js';
 
 const router = Router();
 
-router.get('/overview', requireAuth, (req, res) => {
+router.get('/overview', requireAuth, async (req, res) => {
   const userId = req.user.id;
   const maxTier = req.user.max_tier_level;
 
-  const modules = req.db.prepare('SELECT * FROM modules ORDER BY order_index ASC').all();
-  const lessons = req.db
-    .prepare(`
-      SELECT l.id, l.module_id, l.order_index, l.title, l.slug, l.is_free_preview, l.duration_sec,
-             COALESCE(lp.completed, 0) AS completed,
-             COALESCE(lp.watched_seconds, 0) AS watched_seconds
-      FROM lessons l
-      LEFT JOIN lesson_progress lp ON lp.lesson_id = l.id AND lp.user_id = ?
-      ORDER BY l.order_index ASC
-    `)
-    .all(userId);
+  const [modules, rawLessons, progressRows, journalStats, orders, certificates] = await Promise.all([
+    req.store.listModules(),
+    req.store.listLessons(),
+    req.store.listUserLessonProgress(userId),
+    req.store.getUserJournalSummary(userId),
+    req.store.listUserOrdersWithPackage(userId),
+    req.store.listUserCertificates(userId),
+  ]);
+
+  const progressMap = new Map(progressRows.map((p) => [Number(p.lesson_id), p]));
+  const modMap = new Map(modules.map((m) => [Number(m.id), m]));
+
+  const lessons = rawLessons.map((l) => {
+    const p = progressMap.get(Number(l.id));
+    return {
+      id: l.id,
+      module_id: l.module_id,
+      order_index: l.order_index,
+      title: l.title,
+      slug: l.slug,
+      is_free_preview: l.is_free_preview,
+      duration_sec: l.duration_sec,
+      completed: Number(p?.completed || 0),
+      watched_seconds: Number(p?.watched_seconds || 0),
+    };
+  });
 
   const unlockedLessons = lessons.filter((l) => {
-    const mod = modules.find((m) => m.id === l.module_id);
+    const mod = modMap.get(Number(l.module_id));
     return mod && (maxTier >= mod.min_tier_level || l.is_free_preview);
   });
 
-  const completedCount = unlockedLessons.filter((l) => l.completed === 1).length;
-  const nextLesson = unlockedLessons.find((l) => l.completed === 0) || unlockedLessons[0] || null;
-
-  const journalStats = req.db
-    .prepare(`
-      SELECT COUNT(*) AS total_trades,
-             SUM(CASE WHEN result_r > 0 THEN 1 ELSE 0 END) AS wins,
-             COALESCE(SUM(result_r), 0) AS net_r
-      FROM trade_journal_entries
-      WHERE user_id = ?
-    `)
-    .get(userId);
-
-  const orders = req.db
-    .prepare(`
-      SELECT o.order_ref, o.provider, o.final_cents, o.status, o.created_at, o.paid_at, p.name AS package_name, p.tier_level
-      FROM orders o
-      JOIN packages p ON p.id = o.package_id
-      WHERE o.user_id = ?
-      ORDER BY o.created_at DESC
-    `)
-    .all(userId);
-
-  const certificates = req.db
-    .prepare('SELECT serial_code, tier_level, issued_at FROM certificates WHERE user_id = ? ORDER BY tier_level DESC')
-    .all(userId);
+  const completedCount = unlockedLessons.filter((l) => Number(l.completed) === 1).length;
+  const nextLesson = unlockedLessons.find((l) => Number(l.completed) === 0) || unlockedLessons[0] || null;
 
   res.json({
     user: req.user,
@@ -59,8 +50,8 @@ router.get('/overview', requireAuth, (req, res) => {
       totalCatalogLessons: lessons.length,
       completedLessons: completedCount,
       completionPct: unlockedLessons.length ? Math.round((completedCount / unlockedLessons.length) * 100) : 0,
-      netR: Number((journalStats?.net_r || 0).toFixed(2)),
-      totalTrades: Number(journalStats?.total_trades || 0),
+      netR: Number(Number(journalStats?.netR || 0).toFixed(2)),
+      totalTrades: Number(journalStats?.totalTrades || 0),
     },
     nextLesson,
     orders,
@@ -68,41 +59,36 @@ router.get('/overview', requireAuth, (req, res) => {
   });
 });
 
-router.get('/lessons/:slug', (req, res) => {
+router.get('/lessons/:slug', async (req, res) => {
   const userTier = req.user ? req.user.max_tier_level : 0;
   const userId = req.user ? req.user.id : null;
 
-  const lesson = req.db
-    .prepare(`
-      SELECT l.*, m.title AS module_title, m.slug AS module_slug, m.min_tier_level, m.level_badge
-      FROM lessons l
-      JOIN modules m ON m.id = l.module_id
-      WHERE l.slug = ?
-    `)
-    .get(String(req.params.slug || '').trim());
-
+  const lesson = await req.store.getLessonBySlugWithModule(req.params.slug);
   if (!lesson) {
     return res.status(404).json({ error: 'Lesson not found.', requestId: req.requestId });
   }
 
   const accessible = userTier >= lesson.min_tier_level || Boolean(lesson.is_free_preview);
   if (!accessible) {
-    const requiredPkg = req.db
-      .prepare('SELECT slug, name, tier_level, price_cents FROM packages WHERE tier_level = ?')
-      .get(lesson.min_tier_level);
+    const requiredPkg = await req.store.getPackageByTier(lesson.min_tier_level);
     return res.status(403).json({
       error: `This lesson requires ${requiredPkg?.name || `Tier ${lesson.min_tier_level}`}.`,
       code: 'TIER_LOCKED',
-      requiredPackage: requiredPkg,
+      requiredPackage: requiredPkg
+        ? {
+            slug: requiredPkg.slug,
+            name: requiredPkg.name,
+            tier_level: requiredPkg.tier_level,
+            price_cents: requiredPkg.price_cents,
+          }
+        : null,
       requestId: req.requestId,
     });
   }
 
   let progress = { completed: 0, watched_seconds: 0, quiz_passed: 0, notes_text: '' };
   if (userId) {
-    const row = req.db
-      .prepare('SELECT completed, watched_seconds, quiz_passed, notes_text FROM lesson_progress WHERE user_id = ? AND lesson_id = ?')
-      .get(userId, lesson.id);
+    const row = await req.store.getLessonProgress(userId, lesson.id);
     if (row) progress = row;
   }
 
@@ -133,47 +119,36 @@ router.get('/lessons/:slug', (req, res) => {
   });
 });
 
-router.put('/lessons/:slug/progress', requireAuth, (req, res) => {
-  const lesson = req.db
-    .prepare(`
-      SELECT l.id, l.is_free_preview, m.min_tier_level
-      FROM lessons l JOIN modules m ON m.id = l.module_id
-      WHERE l.slug = ?
-    `)
-    .get(String(req.params.slug || '').trim());
-
+router.put('/lessons/:slug/progress', requireAuth, async (req, res) => {
+  const lesson = await req.store.getLessonBySlugWithModule(req.params.slug);
   if (!lesson) return res.status(404).json({ error: 'Lesson not found.' });
   if (req.user.max_tier_level < lesson.min_tier_level && !lesson.is_free_preview) {
     return res.status(403).json({ error: 'Upgrade required to save progress for this lesson.' });
   }
 
   const { completed, watchedSeconds, quizPassed, notesText } = req.body || {};
-  const existing = req.db
-    .prepare('SELECT * FROM lesson_progress WHERE user_id = ? AND lesson_id = ?')
-    .get(req.user.id, lesson.id);
+  const existing = await req.store.getLessonProgress(req.user.id, lesson.id);
 
   const nextCompleted = completed !== undefined ? (completed ? 1 : 0) : existing?.completed || 0;
   const nextWatched = watchedSeconds !== undefined ? Math.max(0, Number(watchedSeconds)) : existing?.watched_seconds || 0;
   const nextQuiz = quizPassed !== undefined ? (quizPassed ? 1 : 0) : existing?.quiz_passed || 0;
   const nextNotes = notesText !== undefined ? String(notesText).slice(0, 8000) : existing?.notes_text || '';
+  const nowIso = new Date().toISOString();
 
-  req.db
-    .prepare(`
-      INSERT INTO lesson_progress (user_id, lesson_id, completed, watched_seconds, quiz_passed, notes_text, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(user_id, lesson_id) DO UPDATE SET
-        completed = excluded.completed,
-        watched_seconds = excluded.watched_seconds,
-        quiz_passed = excluded.quiz_passed,
-        notes_text = excluded.notes_text,
-        updated_at = datetime('now')
-    `)
-    .run(req.user.id, lesson.id, nextCompleted, nextWatched, nextQuiz, nextNotes);
+  await req.store.upsertLessonProgress({
+    userId: req.user.id,
+    lessonId: lesson.id,
+    completed: nextCompleted,
+    watchedSeconds: nextWatched,
+    quizPassed: nextQuiz,
+    notesText: nextNotes,
+    updatedAt: nowIso,
+  });
 
   res.json({ ok: true, completed: Boolean(nextCompleted), quiz_passed: Boolean(nextQuiz) });
 });
 
-router.get('/journal', requireAuth, (req, res) => {
+router.get('/journal', requireAuth, async (req, res) => {
   if (req.user.max_tier_level < 2) {
     return res.status(403).json({
       error: 'Trade Journal unlocks at Tier 2 ($25 Structural Price Action) or higher.',
@@ -181,11 +156,10 @@ router.get('/journal', requireAuth, (req, res) => {
       requiredTier: 2,
     });
   }
-  const entries = req.db
-    .prepare('SELECT * FROM trade_journal_entries WHERE user_id = ? ORDER BY created_at DESC, id DESC LIMIT 200')
-    .all(req.user.id);
-  const wins = entries.filter((e) => e.result_r > 0).length;
+  const entries = await req.store.listJournalEntries(req.user.id);
+  const wins = entries.filter((e) => Number(e.result_r) > 0).length;
   const netR = entries.reduce((sum, e) => sum + Number(e.result_r || 0), 0);
+
   res.json({
     entries,
     metrics: {
@@ -197,7 +171,7 @@ router.get('/journal', requireAuth, (req, res) => {
   });
 });
 
-router.post('/journal', requireAuth, (req, res) => {
+router.post('/journal', requireAuth, async (req, res) => {
   if (req.user.max_tier_level < 2) {
     return res.status(403).json({ error: 'Trade Journal requires Tier 2 ($25) or higher.' });
   }
@@ -206,45 +180,37 @@ router.post('/journal', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Pair, entry, stop-loss, and take-profit are required.' });
   }
   const cleanDir = String(direction || 'LONG').toUpperCase() === 'SHORT' ? 'SHORT' : 'LONG';
-  const info = req.db
-    .prepare(`
-      INSERT INTO trade_journal_entries (user_id, pair, direction, entry_price, stop_loss, take_profit, risk_pct, result_r, setup_tag, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-    .run(
-      req.user.id,
-      String(pair).trim().toUpperCase().slice(0, 24),
-      cleanDir,
-      Number(entryPrice),
-      Number(stopLoss),
-      Number(takeProfit),
-      Number(riskPct || 1),
-      Number(resultR || 0),
-      String(setupTag || 'OB+FVG').trim().slice(0, 32),
-      String(notes || '').trim().slice(0, 1000)
-    );
-  const created = req.db.prepare('SELECT * FROM trade_journal_entries WHERE id = ?').get(Number(info.lastInsertRowid));
+  const created = await req.store.createJournalEntry({
+    userId: req.user.id,
+    pair: String(pair).trim().toUpperCase().slice(0, 24),
+    direction: cleanDir,
+    entryPrice: Number(entryPrice),
+    stopLoss: Number(stopLoss),
+    takeProfit: Number(takeProfit),
+    riskPct: Number(riskPct || 1),
+    resultR: Number(resultR || 0),
+    setupTag: String(setupTag || 'OB+FVG').trim().slice(0, 32),
+    notes: String(notes || '').trim().slice(0, 1000),
+  });
   res.status(201).json({ entry: created });
 });
 
-router.delete('/journal/:id', requireAuth, (req, res) => {
-  const resDel = req.db
-    .prepare('DELETE FROM trade_journal_entries WHERE id = ? AND user_id = ?')
-    .run(Number(req.params.id), req.user.id);
+router.delete('/journal/:id', requireAuth, async (req, res) => {
+  const resDel = await req.store.deleteJournalEntry(Number(req.params.id), req.user.id);
   if (resDel.changes === 0) return res.status(404).json({ error: 'Entry not found.' });
   res.json({ ok: true });
 });
 
-router.post('/certificates/claim', requireAuth, (req, res, next) => {
+router.post('/certificates/claim', requireAuth, async (req, res, next) => {
   try {
-    const cert = issueCertificateForUser(req.db, req.user);
+    const cert = await issueCertificateForUser(req.store, req.user);
     res.json({ certificate: cert });
   } catch (err) {
     next(err);
   }
 });
 
-router.post('/audits', requireAuth, (req, res) => {
+router.post('/audits', requireAuth, async (req, res) => {
   if (req.user.max_tier_level < 4) {
     return res.status(403).json({ error: '1-on-1 Portfolio Audits are unlocked in Tier 4 ($500 Institutional Vault).' });
   }
@@ -252,17 +218,19 @@ router.post('/audits', requireAuth, (req, res) => {
   if (!questionText || String(questionText).trim().length < 10) {
     return res.status(400).json({ error: 'Please include your setup or portfolio question (min 10 chars).' });
   }
-  const info = req.db
-    .prepare('INSERT INTO mentorship_audits (user_id, portfolio_size_usd, focus_pair, question_text) VALUES (?, ?, ?, ?)')
-    .run(req.user.id, Number(portfolioSizeUsd || 5000), String(focusPair || 'BTC/USDT').slice(0, 24), String(questionText).trim().slice(0, 2000));
-  res.status(201).json({ audit: req.db.prepare('SELECT * FROM mentorship_audits WHERE id = ?').get(Number(info.lastInsertRowid)) });
+  const audit = await req.store.createAudit({
+    userId: req.user.id,
+    portfolioSizeUsd: Number(portfolioSizeUsd || 5000),
+    focusPair: String(focusPair || 'BTC/USDT').slice(0, 24),
+    questionText: String(questionText).trim().slice(0, 2000),
+  });
+  res.status(201).json({ audit });
 });
 
-router.get('/audits', requireAuth, (req, res) => {
+router.get('/audits', requireAuth, async (req, res) => {
   if (req.user.max_tier_level < 4) return res.json({ audits: [] });
-  const audits = req.db.prepare('SELECT * FROM mentorship_audits WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+  const audits = await req.store.listAuditsForUser(req.user.id);
   res.json({ audits });
 });
 
 export default router;
-
