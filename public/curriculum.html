@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Curriculum (13 Modules · 39 Playbooks) — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/site.css">
+  <style>
+    .curr-page { padding: 94px clamp(20px, 5vw, 72px) 72px; }
+    .filter-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0; }
+    .filter-pill {
+      min-height: 36px; padding: 0 14px; border: 1px solid var(--rule-strong);
+      background: var(--surface); color: var(--muted); font-family: var(--font-mono);
+      font-size: 0.78rem; cursor: pointer;
+    }
+    .filter-pill.active { border-color: var(--accent); color: var(--ink); background: var(--surface-2); }
+    .mod-grid { display: grid; gap: 16px; }
+    .mod-card { background: var(--surface); border: 1px solid var(--rule); padding: 22px; }
+    .mod-head { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
+    .lesson-rows { margin-top: 16px; border-top: 1px solid var(--rule); }
+    .lesson-row {
+      display: grid; grid-template-columns: 76px minmax(0, 1fr) auto; align-items: center; gap: 12px;
+      padding: 10px 0; border-bottom: 1px solid var(--rule); font-size: 0.9rem;
+    }
+    .lesson-row:last-child { border-bottom: 0; }
+    .tag { font-family: var(--font-mono); font-size: 11px; padding: 2px 7px; border: 1px solid var(--rule-strong); color: var(--muted); }
+    .tag.open { border-color: var(--ok); color: var(--ok); }
+    .tag.accent { border-color: var(--accent); color: var(--accent); }
+    @media (max-width: 680px) { .lesson-row { grid-template-columns: 1fr; gap: 6px; } }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
+    <nav class="nav-links">
+      <a href="/curriculum" aria-current="page">Curriculum</a>
+      <a href="/pricing">Packages</a>
+      <a href="/verify">Verify</a>
+      <a href="/course" class="keep-mobile">Portal</a>
+      <a href="/login">Sign in</a>
+      <a href="/checkout?tier=starter-pass" class="nav-cta">Start $1</a>
+    </nav>
+  </header>
+
+  <main class="curr-page">
+    <div class="container">
+      <div class="spec-label"><span class="dot"></span><span>SYLLABUS SPECIFICATION // 13 MODULES · 39 PLAYBOOKS</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">From Spot Wallets to Institutional Orderflow.</h1>
+      <p style="color:var(--muted);max-width:62ch;margin-top:10px;">
+        Inspect every lesson in the SQLite curriculum ledger. Free preview playbooks open immediately inside the student portal without checkout.
+      </p>
+
+      <div class="filter-bar" role="group" aria-label="Filter modules by package tier">
+        <button type="button" class="filter-pill active" data-tier="all">ALL TIERS (13)</button>
+        <button type="button" class="filter-pill" data-tier="1">LEVEL 1 · $1 SPARK</button>
+        <button type="button" class="filter-pill" data-tier="2">LEVEL 2 · $25 FOUNDATION</button>
+        <button type="button" class="filter-pill" data-tier="3">LEVEL 3 · $100 PRO DESK</button>
+        <button type="button" class="filter-pill" data-tier="4">LEVEL 4 · $500 VAULT</button>
+      </div>
+
+      <div class="mod-grid" id="curriculum-list">
+        <div class="spec-card"><div class="mono" style="color:var(--muted);">Loading live syllabus from VERNIER ledger...</div></div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    const listEl = document.getElementById('curriculum-list');
+    const filterButtons = [...document.querySelectorAll('.filter-pill')];
+    let modules = [];
+    let userTier = 0;
+
+    const TIER_SLUGS = { 1: 'starter-pass', 2: 'price-action', 3: 'pro-orderflow', 4: 'institutional-vault' };
+    const TIER_PRICE = { 1: '$1', 2: '$25', 3: '$100', 4: '$500' };
+
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+    function render(filterTier = 'all') {
+      const shown = filterTier === 'all' ? modules : modules.filter((m) => String(m.min_tier_level) === filterTier);
+      if (!shown.length) {
+        listEl.innerHTML = '<div class="spec-card">No modules match this tier filter.</div>';
+        return;
+      }
+      listEl.innerHTML = shown.map((mod) => {
+        const pkgSlug = TIER_SLUGS[mod.min_tier_level] || 'starter-pass';
+        const statusTag = mod.unlocked
+          ? '<span class="tag open">UNLOCKED IN YOUR ACCOUNT</span>'
+          : `<span class="tag accent">REQUIRES LEVEL ${mod.min_tier_level} (${TIER_PRICE[mod.min_tier_level]})</span>`;
+        const lessonsHtml = mod.lessons.map((l, idx) => {
+          const mins = Math.max(1, Math.round((l.duration_sec || 360) / 60));
+          const access = l.accessible
+            ? `<a class="btn" style="min-height:34px;padding:0 12px;font-size:11px;" href="/course#/lesson/${encodeURIComponent(l.slug)}">${l.is_free_preview ? 'FREE PREVIEW' : 'OPEN PLAYBOOK'}</a>`
+            : `<a class="btn" style="min-height:34px;padding:0 12px;font-size:11px;" href="/checkout?tier=${pkgSlug}">UNLOCK ${TIER_PRICE[mod.min_tier_level]}</a>`;
+          return `
+            <div class="lesson-row">
+              <span class="mono" style="color:var(--muted);">P${String(mod.order_index).padStart(2, '0')}.${idx + 1}</span>
+              <div>
+                <div style="font-weight:600;">${esc(l.title)} ${l.is_free_preview ? '<span class="tag open" style="margin-left:8px;">PREVIEW</span>' : ''}</div>
+                <div class="mono" style="font-size:11px;color:var(--muted);">${mins} min study + chart schematic</div>
+              </div>
+              <div>${access}</div>
+            </div>
+          `;
+        }).join('');
+
+        return `
+          <article class="mod-card">
+            <div class="mod-head">
+              <div>
+                <div class="spec-label">${esc(mod.level_badge)} · MODULE ${String(mod.order_index).padStart(2, '0')} · ${mod.estimated_minutes} MIN</div>
+                <h2 style="margin:6px 0 4px;font-size:1.25rem;">${esc(mod.title)}</h2>
+                <p style="margin:0;color:var(--muted);font-size:0.9rem;max-width:68ch;">${esc(mod.summary)}</p>
+              </div>
+              ${statusTag}
+            </div>
+            <div class="lesson-rows">${lessonsHtml}</div>
+          </article>
+        `;
+      }).join('');
+    }
+
+    filterButtons.forEach((b) => b.addEventListener('click', () => {
+      filterButtons.forEach((x) => x.classList.remove('active'));
+      b.classList.add('active');
+      render(b.dataset.tier);
+    }));
+
+    try {
+      const res = await fetch('/api/v1/catalog/curriculum');
+      const data = await res.json();
+      modules = data.modules || [];
+      userTier = data.userTier || 0;
+      render('all');
+    } catch {
+      listEl.innerHTML = '<div class="spec-card">Could not reach syllabus API. Reload to retry.</div>';
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In / Register — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/site.css">
+  <style>
+    .auth-page { min-height: 100vh; padding: 92px 20px 64px; display: grid; place-items: center; }
+    .auth-box { width: min(500px, 100%); background: var(--surface); border: 1px solid var(--rule-strong); padding: 28px; }
+    .tab-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 18px 0 22px; }
+    .tab-btn {
+      min-height: 38px; border: 1px solid var(--rule); background: var(--ground); color: var(--muted);
+      font-family: var(--font-mono); font-size: 0.76rem; cursor: pointer;
+    }
+    .tab-btn.active { border-color: var(--accent); color: var(--ink); background: var(--surface-2); }
+    .form-stack { display: grid; gap: 14px; }
+    .alert { padding: 10px 12px; font-size: 0.85rem; border: 1px solid var(--rule); display: none; }
+    .alert.show { display: block; }
+    .alert.err { border-color: var(--fail); color: #ffb3b3; background: var(--fail-soft); }
+    .alert.ok { border-color: var(--ok); color: #9ae7c9; background: var(--ok-soft); }
+    .demo-row { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--rule); display: grid; gap: 8px; }
+    .demo-btn {
+      width: 100%; justify-content: space-between; font-size: 0.75rem; min-height: 36px; padding: 0 12px;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
+    <nav class="nav-links">
+      <a href="/curriculum">Curriculum</a>
+      <a href="/pricing">Packages</a>
+      <a href="/course" class="keep-mobile">Portal</a>
+      <a href="/checkout?tier=starter-pass" class="nav-cta">Start $1</a>
+    </nav>
+  </header>
+
+  <main class="auth-page">
+    <section class="auth-box" aria-labelledby="auth-heading">
+      <div class="spec-label"><span class="dot"></span><span>SEAT AUTHENTICATION // HTTPONLY SESSION</span></div>
+      <h1 id="auth-heading" style="margin:8px 0 0;font-family:var(--font-display);font-size:1.75rem;">Student Desk Access</h1>
+
+      <div class="tab-row" role="tablist">
+        <button type="button" class="tab-btn active" data-mode="login">SIGN IN</button>
+        <button type="button" class="tab-btn" data-mode="register">REGISTER</button>
+        <button type="button" class="tab-btn" data-mode="reset">RESET KEY</button>
+      </div>
+
+      <div class="alert" id="auth-alert" role="status"></div>
+
+      <form id="login-form" class="form-stack">
+        <div class="input-group">
+          <label for="login-email">Email Address</label>
+          <input class="input-control" id="login-email" type="email" autocomplete="email" required placeholder="student@vernier.academy">
+        </div>
+        <div class="input-group">
+          <label for="login-pass">Password</label>
+          <input class="input-control" id="login-pass" type="password" autocomplete="current-password" required placeholder="Minimum 6 characters">
+        </div>
+        <button class="btn btn-commit" type="submit">Authenticate Session</button>
+      </form>
+
+      <form id="register-form" class="form-stack" hidden>
+        <div class="input-group">
+          <label for="reg-name">Full Name</label>
+          <input class="input-control" id="reg-name" type="text" required placeholder="Ali Khan / Jordan Hale">
+        </div>
+        <div class="input-group">
+          <label for="reg-email">Email Address</label>
+          <input class="input-control" id="reg-email" type="email" autocomplete="email" required placeholder="you@domain.com">
+        </div>
+        <div class="input-group">
+          <label for="reg-country">Country</label>
+          <select class="input-control" id="reg-country">
+            <option value="US">United States (US)</option>
+            <option value="PK">Pakistan (PK)</option>
+            <option value="GB">United Kingdom (UK)</option>
+            <option value="AE">United Arab Emirates (UAE)</option>
+            <option value="GLOBAL">Other Global Jurisdiction</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label for="reg-pass">Password</label>
+          <input class="input-control" id="reg-pass" type="password" autocomplete="new-password" minlength="6" required placeholder="Minimum 6 characters">
+        </div>
+        <button class="btn btn-commit" type="submit">Create Student Account</button>
+      </form>
+
+      <form id="reset-form" class="form-stack" hidden>
+        <div class="input-group">
+          <label for="rst-email">Account Email</label>
+          <input class="input-control" id="rst-email" type="email" required placeholder="student@vernier.academy">
+        </div>
+        <button class="btn" type="submit">Request Dev Reset Token</button>
+        <div id="rst-step2" hidden style="display:grid;gap:12px;padding-top:8px;border-top:1px solid var(--rule);">
+          <div class="input-group">
+            <label for="rst-token">Reset Token</label>
+            <input class="input-control mono" id="rst-token" type="text">
+          </div>
+          <div class="input-group">
+            <label for="rst-pass">New Password</label>
+            <input class="input-control" id="rst-pass" type="password" minlength="6">
+          </div>
+          <button class="btn btn-commit" type="button" id="rst-confirm-btn">Set New Password</button>
+        </div>
+      </form>
+
+      <div class="demo-row">
+        <div class="mono" style="font-size:11px;color:var(--muted);">QUICK SEEDED ACCOUNTS (LOCAL TESTBENCH):</div>
+        <button type="button" class="btn demo-btn" data-demo-email="student@vernier.academy" data-demo-pass="TraderTest!2026">
+          <span>Demo Student · Tier 1 ($1)</span><span class="mono">Fill &amp; Sign In</span>
+        </button>
+        <button type="button" class="btn demo-btn" data-demo-email="pro@vernier.academy" data-demo-pass="VaultTest!2026">
+          <span>Demo Vault Graduate · Tier 4 ($500)</span><span class="mono">Fill &amp; Sign In</span>
+        </button>
+        <button type="button" class="btn demo-btn" data-demo-email="admin@vernier.academy" data-demo-pass="AdminVernier!2026" data-demo-next="/admin">
+          <span>Demo Instructor · Admin Console</span><span class="mono">Fill &amp; Sign In</span>
+        </button>
+      </div>
+    </section>
+  </main>
+
+  <script type="module">
+    const nextUrl = new URLSearchParams(location.search).get('next') || '/course';
+    const alertBox = document.getElementById('auth-alert');
+    const loginForm = document.getElementById('login-form');
+    const regForm = document.getElementById('register-form');
+    const resetForm = document.getElementById('reset-form');
+    const tabs = [...document.querySelectorAll('.tab-btn')];
+
+    function showMsg(text, kind = 'err') {
+      alertBox.className = `alert show ${kind}`;
+      alertBox.textContent = text;
+    }
+
+    function setMode(mode) {
+      tabs.forEach((b) => b.classList.toggle('active', b.dataset.mode === mode));
+      loginForm.hidden = mode !== 'login';
+      regForm.hidden = mode !== 'register';
+      resetForm.hidden = mode !== 'reset';
+      alertBox.className = 'alert';
+    }
+    tabs.forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+
+    async function postLogin(email, password, redirectTarget = nextUrl) {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showMsg(data.error || 'Login failed');
+      const target = data.user.role === 'admin' && redirectTarget === '/course' ? '/admin' : redirectTarget;
+      location.href = target;
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      postLogin(document.getElementById('login-email').value, document.getElementById('login-pass').value);
+    });
+
+    regForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: document.getElementById('reg-name').value,
+          email: document.getElementById('reg-email').value,
+          country: document.getElementById('reg-country').value,
+          password: document.getElementById('reg-pass').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showMsg(data.error || 'Registration failed');
+      location.href = nextUrl;
+    });
+
+    resetForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const res = await fetch('/api/v1/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('rst-email').value }),
+      });
+      const data = await res.json();
+      if (data.devResetToken) {
+        document.getElementById('rst-step2').hidden = false;
+        document.getElementById('rst-token').value = data.devResetToken;
+        showMsg('Dev reset token generated automatically below.', 'ok');
+      } else {
+        showMsg(data.message || 'Check instructions.', 'ok');
+      }
+    });
+
+    document.getElementById('rst-confirm-btn').addEventListener('click', async () => {
+      const res = await fetch('/api/v1/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token: document.getElementById('rst-token').value,
+          password: document.getElementById('rst-pass').value,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) return showMsg(data.error || 'Reset failed');
+      showMsg('Password updated. Sign in with your new key.', 'ok');
+      setTimeout(() => setMode('login'), 800);
+    });
+
+    document.querySelectorAll('[data-demo-email]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setMode('login');
+        document.getElementById('login-email').value = btn.dataset.demoEmail;
+        document.getElementById('login-pass').value = btn.dataset.demoPass;
+        postLogin(btn.dataset.demoEmail, btn.dataset.demoPass, btn.dataset.demoNext || nextUrl);
+      });
+    });
+  </script>
+</body>
+</html>

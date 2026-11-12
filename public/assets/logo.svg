@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none" role="img" aria-label="Vernier Execution Academy Mark">
+  <rect x="2" y="2" width="60" height="60" stroke="#7f979c" stroke-opacity="0.35" stroke-width="1.5"/>
+  <!-- Caliper beam & graduated scale -->
+  <path d="M12 18H52" stroke="#e4ecea" stroke-width="2.5"/>
+  <path d="M16 14V22M24 15V21M32 14V22M40 15V21M48 14V22" stroke="#7f979c" stroke-width="1.5"/>
+  <!-- Fixed & sliding caliper jaws forming the V -->
+  <path d="M14 18V46L22 36V18" stroke="#e4ecea" stroke-width="2" stroke-linejoin="miter"/>
+  <path d="M36 18V36L46 46V18" stroke="#e4ecea" stroke-width="2" stroke-linejoin="miter"/>
+  <!-- Thermal Amber Zero-Calibration Strike Line -->
+  <path d="M32 24V50" stroke="#f58a1f" stroke-width="2.5"/>
+  <circle cx="32" cy="50" r="2.5" fill="#f58a1f"/>
+</svg>
+

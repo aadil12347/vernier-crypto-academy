@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Graduate Credential — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/site.css">
+  <style>
+    .verify-page { padding: 98px clamp(20px, 5vw, 72px) 72px; min-height: 100vh; }
+    .verify-form { display: flex; flex-wrap: wrap; gap: 10px; max-width: 560px; margin: 24px 0; }
+    .cert-plate {
+      margin-top: 24px; max-width: 720px; background: linear-gradient(135deg, #0f171d 0%, #091015 100%);
+      border: 1px solid var(--accent); padding: 32px; position: relative;
+    }
+    .cert-plate::after {
+      content: "VERNIER // REGISTRY SEALED"; position: absolute; right: 20px; bottom: 16px;
+      font-family: var(--font-mono); font-size: 10px; color: var(--dim); letter-spacing: 0.12em;
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
+    <nav class="nav-links">
+      <a href="/curriculum">Curriculum</a>
+      <a href="/pricing">Packages</a>
+      <a href="/verify" aria-current="page">Verify</a>
+      <a href="/course" class="keep-mobile">Portal</a>
+      <a href="/checkout?tier=starter-pass" class="nav-cta">Start $1</a>
+    </nav>
+  </header>
+
+  <main class="verify-page">
+    <div class="container">
+      <div class="spec-label"><span class="dot"></span><span>PUBLIC LEDGER CHECK // SERIAL VERIFICATION</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">Verify Academy Credential</h1>
+      <p style="color:var(--muted);max-width:56ch;margin-top:8px;">
+        Enter a graduate serial number to inspect authentic SQLite issuance records. Demo verified record: <code class="mono" style="color:var(--ink)">VRN-2026-T4-DEMO01</code>.
+      </p>
+
+      <form class="verify-form" id="verify-form">
+        <input class="input-control num" id="serial-input" type="text" placeholder="VRN-2026-T4-DEMO01" required style="flex:1;min-width:220px;">
+        <button class="btn btn-commit" type="submit">Verify Serial</button>
+      </form>
+
+      <div id="verify-output"></div>
+    </div>
+  </main>
+
+  <script type="module">
+    const form = document.getElementById('verify-form');
+    const input = document.getElementById('serial-input');
+    const output = document.getElementById('verify-output');
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+    async function lookup(serial) {
+      if (!serial) return;
+      output.innerHTML = '<div class="spec-card mono" style="max-width:720px;color:var(--muted);">Querying VERNIER serial registry...</div>';
+      try {
+        const res = await fetch(`/api/v1/catalog/certificates/${encodeURIComponent(serial.trim())}`);
+        if (!res.ok) {
+          output.innerHTML = `<div class="spec-card" style="max-width:720px;border-color:var(--fail);">
+            <div class="spec-label" style="color:var(--fail);">NO RECORD FOUND</div>
+            <p style="margin:8px 0 0;color:var(--muted);">Serial <code>${esc(serial)}</code> does not match any active VERNIER certificate.</p>
+          </div>`;
+          return;
+        }
+        const { certificate } = await res.json();
+        output.innerHTML = `
+          <div class="cert-plate">
+            <div class="spec-label"><span class="dot"></span><span>AUTHENTIC REGISTRY RECORD · LEVEL ${certificate.tier_level}</span></div>
+            <h2 style="font-family:var(--font-display);font-size:2rem;margin:14px 0 6px;">${esc(certificate.full_name)}</h2>
+            <div class="mono" style="color:var(--accent);font-size:0.95rem;">${esc(certificate.package_name)}</div>
+            <dl style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin:24px 0 0;padding-top:16px;border-top:1px solid var(--rule);">
+              <div><dt class="mono" style="font-size:11px;color:var(--muted);">SERIAL CODE</dt><dd class="mono" style="margin:4px 0 0;">${esc(certificate.serial_code)}</dd></div>
+              <div><dt class="mono" style="font-size:11px;color:var(--muted);">ISSUED AT</dt><dd class="mono" style="margin:4px 0 0;">${esc(certificate.issued_at)}</dd></div>
+              <div><dt class="mono" style="font-size:11px;color:var(--muted);">STATUS</dt><dd class="mono" style="margin:4px 0 0;color:var(--ok);">VERIFIED ACTIVE</dd></div>
+            </dl>
+          </div>
+        `;
+      } catch {
+        output.innerHTML = '<div class="spec-card" style="max-width:720px;">Network error querying registry.</div>';
+      }
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      lookup(input.value);
+    });
+
+    const params = new URLSearchParams(location.search);
+    const pathParts = location.pathname.split('/').filter(Boolean);
+    const initialSerial = params.get('serial') || (pathParts[0] === 'verify' && pathParts[1] ? pathParts[1] : '');
+    if (initialSerial) {
+      input.value = initialSerial;
+      lookup(initialSerial);
+    }
+  </script>
+</body>
+</html>

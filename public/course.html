@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Course Portal — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/app.css">
+</head>
+<body class="app-body">
+  <a class="skip-link" href="#view">Skip to workspace</a>
+
+  <div class="app-shell">
+    <aside class="app-side" data-region="sidebar" aria-label="Course sections">
+      <a class="app-brand" href="/">
+        <img src="/assets/logo.svg" alt="" width="20" height="20">
+        <span>VERNIER DESK</span>
+      </a>
+      <nav aria-label="Portal navigation">
+        <ul class="app-nav" id="course-nav">
+          <li><a href="#/"><span>Overview</span><kbd class="app-kbd">1</kbd></a></li>
+          <li><a href="#/curriculum"><span>Curriculum (13)</span><kbd class="app-kbd">2</kbd></a></li>
+          <li><a href="#/tools/calculator"><span>Risk Tuner</span><kbd class="app-kbd">3</kbd></a></li>
+          <li><a href="#/tools/journal"><span>Trade Journal</span><kbd class="app-kbd">4</kbd></a></li>
+          <li><a href="#/community"><span>Certificates &amp; Audit</span><kbd class="app-kbd">5</kbd></a></li>
+        </ul>
+      </nav>
+      <div style="margin-top:auto;padding:10px;border-top:1px solid var(--app-line);display:grid;gap:8px;">
+        <div id="side-seat-meta" class="meta num">Checking seat tier...</div>
+        <a class="app-btn commit" id="side-upgrade-cta" href="/checkout?tier=starter-pass" style="justify-content:center;">Upgrade Tier</a>
+        <a class="app-btn" href="/dashboard" style="justify-content:center;">Account &amp; Billing</a>
+      </div>
+    </aside>
+
+    <div class="app-col">
+      <header class="app-top" data-region="topbar">
+        <div class="app-search">
+          <label class="sr-only" for="portal-search">Search modules and playbooks</label>
+          <input id="portal-search" type="search" placeholder="Search lessons or press Ctrl+K..." autocomplete="off">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+          <button type="button" class="app-btn" id="btn-palette" title="Open command palette">Palette <kbd class="app-kbd">Ctrl K</kbd></button>
+          <button type="button" class="app-btn" id="btn-theme" title="Toggle light or dark workspace">Theme</button>
+          <a class="app-btn" href="/" title="Return to main film landing page">Public Site</a>
+        </div>
+      </header>
+
+      <main class="app-main" id="view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <script type="module" src="/js/course-app.js"></script>
+</body>
+</html>

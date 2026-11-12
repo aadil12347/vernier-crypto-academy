@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Packages ($1 · $25 · $100 · $500) &amp; Upgrade Credits — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/site.css">
+  <style>
+    .pricing-page { padding: 94px clamp(20px, 5vw, 72px) 72px; }
+    .matrix-wrap { overflow-x: auto; margin-top: 32px; border: 1px solid var(--rule); background: var(--surface); }
+    table.matrix { width: 100%; border-collapse: collapse; min-width: 720px; }
+    table.matrix th, table.matrix td { padding: 12px 16px; border-bottom: 1px solid var(--rule); text-align: left; font-size: 0.9rem; }
+    table.matrix th { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; color: var(--muted); }
+    table.matrix td.num { font-family: var(--font-mono); text-align: right; }
+    .rails-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 28px; }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
+    <nav class="nav-links">
+      <a href="/curriculum">Curriculum</a>
+      <a href="/pricing" aria-current="page">Packages</a>
+      <a href="/verify">Verify</a>
+      <a href="/course" class="keep-mobile">Portal</a>
+      <a href="/login">Sign in</a>
+      <a href="/checkout?tier=starter-pass" class="nav-cta">Start $1</a>
+    </nav>
+  </header>
+
+  <main class="pricing-page">
+    <div class="container">
+      <div class="spec-label"><span class="dot"></span><span>PACKAGE SPECIFICATION // CUMULATIVE TIER MATRIX</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">Start at $1. Scale With Zero Duplicate Cost.</h1>
+      <p style="color:var(--muted);max-width:64ch;margin-top:10px;">
+        Server-side entitlement math deducts 100% of every settled tier you own toward higher packages. Signed-in accounts see exact remaining net price automatically below.
+      </p>
+
+      <div class="packages-grid" id="pricing-cards"></div>
+
+      <h2 class="display-lg" style="font-size:1.7rem;margin-top:52px;">Tier Feature &amp; Settlement Comparison</h2>
+      <div class="matrix-wrap">
+        <table class="matrix">
+          <thead>
+            <tr>
+              <th>Capability / Access Scope</th>
+              <th class="num">Tier 1 ($1)</th>
+              <th class="num">Tier 2 ($25)</th>
+              <th class="num">Tier 3 ($100)</th>
+              <th class="num">Tier 4 ($500)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Included Syllabus Scope</td><td class="num">L1 (6 labs)</td><td class="num">L1–L2 (16 labs)</td><td class="num">L1–L3 (30 labs)</td><td class="num">L1–L4 (All 39)</td></tr>
+            <tr><td>Position Size &amp; Fee Calculator</td><td class="num">Included</td><td class="num">Included</td><td class="num">Included</td><td class="num">Included</td></tr>
+            <tr><td>Persistent R-Multiple Trade Journal</td><td class="num">—</td><td class="num">Included</td><td class="num">Included</td><td class="num">Included</td></tr>
+            <tr><td>Perpetual Futures, OI &amp; CVD Orderflow</td><td class="num">—</td><td class="num">—</td><td class="num">Included</td><td class="num">Included</td></tr>
+            <tr><td>1-on-1 Direct Trade Desk Audit</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">Included</td></tr>
+            <tr><td>Verified Graduation Serial Certificate</td><td class="num">—</td><td class="num">Eligible</td><td class="num">Eligible</td><td class="num">Honors Tier 4</td></tr>
+            <tr><td>100% Prior Payment Upgrade Credit</td><td class="num">Active</td><td class="num">Active</td><td class="num">Active</td><td class="num">Max Tier</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h2 class="display-lg" style="font-size:1.7rem;margin-top:52px;">Multi-Option Payment Architecture</h2>
+      <div class="rails-grid">
+        <div class="spec-card">
+          <div class="spec-label">01 // SANDBOX RAIL (LIVE FOR TESTING)</div>
+          <h3 style="margin:10px 0 6px;">Zero-Risk Flow Verification</h3>
+          <p style="margin:0;color:var(--muted);font-size:0.88rem;">Simulate instant card approvals, decline errors, webhook idempotency, and automated refund access revocation safely right now.</p>
+        </div>
+        <div class="spec-card featured">
+          <div class="spec-label"><span class="dot"></span><span>02 // WHOP GLOBAL MoR (PHASE 6)</span></div>
+          <h3 style="margin:10px 0 6px;">USA &amp; Worldwide Cards + Apple Pay</h3>
+          <p style="margin:0;color:var(--muted);font-size:0.88rem;">Whop acts as US Merchant of Record so American/global students avoid cross-border bank declines while payouts route smoothly.</p>
+        </div>
+        <div class="spec-card">
+          <div class="spec-label">03 // DIRECT CRYPTO SETTLEMENT</div>
+          <h3 style="margin:10px 0 6px;">USDT TRC20 / Polygon / USDC</h3>
+          <p style="margin:0;color:var(--muted);font-size:0.88rem;">Zero card declines or chargebacks anywhere on Earth. Submit on-chain TxID for fast admin verification or automatic IPN unlock.</p>
+        </div>
+        <div class="spec-card">
+          <div class="spec-label">04 // LOCAL PAKISTAN RAILS</div>
+          <h3 style="margin:10px 0 6px;">PKR Bank / SadaPay / NayaPay</h3>
+          <p style="margin:0;color:var(--muted);font-size:0.88rem;">Exact PKR conversion displayed automatically at checkout for domestic students submitting transfer references.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script type="module">
+    const grid = document.getElementById('pricing-cards');
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    try {
+      const res = await fetch('/api/v1/catalog/packages');
+      const { packages } = await res.json();
+      grid.innerHTML = packages.map((pkg) => {
+        const list = (pkg.features || []).map((f) => `<li>${esc(f)}</li>`).join('');
+        const baseD = (pkg.price_cents / 100).toFixed(pkg.price_cents % 100 ? 2 : 0);
+        const effD = (pkg.effective_price_cents / 100).toFixed(pkg.effective_price_cents % 100 ? 2 : 0);
+        const creditD = (pkg.upgrade_credit_cents / 100).toFixed(0);
+        const featured = pkg.tier_level === 3 ? 'featured' : '';
+        const action = pkg.owned
+          ? `<a class="btn" style="width:100%;" href="/course">Owned · Open Portal</a>`
+          : `<a class="btn ${pkg.tier_level === 3 || pkg.tier_level === 1 ? 'btn-commit' : ''}" style="width:100%;" href="/checkout?tier=${encodeURIComponent(pkg.slug)}">${pkg.upgrade_credit_cents > 0 ? `Upgrade for $${effD}` : `Commit $${effD}`}</a>`;
+        return `
+          <article class="spec-card ${featured}">
+            <div class="spec-label">${esc(pkg.badge_code)} · LEVEL ${pkg.tier_level}</div>
+            <div class="pkg-price num">$${effD}</div>
+            <div class="mono" style="font-size:12px;color:var(--accent);">
+              ${pkg.owned ? 'ALREADY SETTLED' : pkg.upgrade_credit_cents > 0 ? `List $${baseD} minus $${creditD} credit` : 'Coupons allowed at checkout'}
+            </div>
+            <h3 style="margin:10px 0 6px;font-size:1.1rem;">${esc(pkg.name)}</h3>
+            <p style="margin:0;color:var(--muted);font-size:0.86rem;">${esc(pkg.tagline)}</p>
+            <ul class="pkg-list">${list}</ul>
+            ${action}
+          </article>
+        `;
+      }).join('');
+    } catch {
+      grid.innerHTML = '<div class="spec-card">Failed to load packages from server.</div>';
+    }
+  </script>
+</body>
+</html>

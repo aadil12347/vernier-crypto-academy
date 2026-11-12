@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Notice — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/site.css">
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
+    <nav class="nav-links"><a href="/pricing">Packages</a><a href="/course" class="keep-mobile">Portal</a><a href="/checkout?tier=starter-pass" class="nav-cta">Start $1</a></nav>
+  </header>
+  <main style="padding:96px clamp(20px,5vw,72px) 72px;">
+    <article class="container" style="max-width:760px;">
+      <div class="spec-label"><span class="dot"></span><span>COMPLIANCE 02 // PRIVACY NOTICE</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">Data Collection &amp; Telemetry</h1>
+      <div class="spec-card" style="margin-top:24px;display:grid;gap:16px;color:var(--muted);">
+        <p style="margin:0;"><strong style="color:var(--ink);">1. Account Records.</strong> We store your email address, full name, country preference, scrypt password hash, lesson completion logs, private study notes, and trade journal entries strictly inside the academy SQLite store.</p>
+        <p style="margin:0;"><strong style="color:var(--ink);">2. Card Data Isolation.</strong> VERNIER never stores raw payment card numbers or CVV codes. Card payments are processed directly inside Whop Checkout's PCI-compliant iframe when enabled, while crypto and local orders record only transaction hashes and reference IDs.</p>
+        <p style="margin:0;"><strong style="color:var(--ink);">3. Cookie Sessions.</strong> Authentication uses a strict HttpOnly session cookie (<code>vernier_sid</code>) without advertising or cross-site behavioral tracking scripts.</p>
+      </div>
+    </article>
+  </main>
+</body>
+</html>

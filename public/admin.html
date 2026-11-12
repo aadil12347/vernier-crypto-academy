@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Instructor Admin Console — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/app.css">
+</head>
+<body class="app-body">
+  <a class="skip-link" href="#view">Skip to admin workspace</a>
+
+  <div class="app-shell">
+    <aside class="app-side" data-region="sidebar" aria-label="Admin sections">
+      <a class="app-brand" href="/">
+        <img src="/assets/logo.svg" alt="" width="20" height="20">
+        <span>VERNIER ADMIN</span>
+      </a>
+      <nav aria-label="Admin navigation">
+        <ul class="app-nav" id="admin-nav">
+          <li><a href="#/"><span>Desk Overview</span><kbd class="app-kbd">1</kbd></a></li>
+          <li><a href="#/orders"><span>Orders &amp; Approvals</span><kbd class="app-kbd">2</kbd></a></li>
+          <li><a href="#/students"><span>Students &amp; Grants</span><kbd class="app-kbd">3</kbd></a></li>
+          <li><a href="#/cms"><span>Course CMS</span><kbd class="app-kbd">4</kbd></a></li>
+          <li><a href="#/coupons"><span>Coupons &amp; Audits</span><kbd class="app-kbd">5</kbd></a></li>
+          <li><a href="#/webhooks"><span>Webhook Ledger</span><kbd class="app-kbd">6</kbd></a></li>
+        </ul>
+      </nav>
+      <div style="margin-top:auto;padding:10px;border-top:1px solid var(--app-line);display:grid;gap:8px;">
+        <div id="admin-rail-badge" class="meta num">WHOP: PHASE 6 PLUG</div>
+        <a class="app-btn" href="/course" style="justify-content:center;">Student View</a>
+        <a class="app-btn" href="/login?next=/admin" id="admin-auth-btn" style="justify-content:center;">Sign In</a>
+      </div>
+    </aside>
+
+    <div class="app-col">
+      <header class="app-top" data-region="topbar">
+        <div class="app-search">
+          <label class="sr-only" for="admin-search">Search order refs, emails, or TxIDs</label>
+          <input id="admin-search" type="search" placeholder="Search order ref, email, or TxID..." autocomplete="off">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-left:auto;">
+          <button type="button" class="app-btn" id="btn-admin-palette">Palette <kbd class="app-kbd">Ctrl K</kbd></button>
+          <button type="button" class="app-btn" id="btn-admin-theme">Theme</button>
+          <a class="app-btn" href="/">Public Site</a>
+        </div>
+      </header>
+
+      <main class="app-main" id="view" tabindex="-1"></main>
+    </div>
+  </div>
+
+  <script type="module" src="/js/admin-app.js"></script>
+</body>
+</html>
+

@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Checkout &amp; Upgrade Settlement — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/site.css">
+  <style>
+    [hidden] { display: none !important; }
+    .ck-page { padding: 90px clamp(16px, 5vw, 68px) 72px; min-height: 100vh; }
+    .ck-layout { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.85fr); gap: 24px; margin-top: 24px; align-items: start; }
+    .tier-selector { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 18px; }
+    .tier-pill {
+      padding: 12px 10px; border: 1px solid var(--rule-strong); background: var(--surface);
+      color: var(--muted); text-align: left; cursor: pointer; display: grid; gap: 4px;
+    }
+    .tier-pill.active { border-color: var(--accent); color: var(--ink); background: var(--surface-2); }
+    .rail-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 14px 0 20px; }
+    .rail-btn {
+      padding: 10px 8px; border: 1px solid var(--rule); background: var(--ground); color: var(--muted);
+      font-family: var(--font-mono); font-size: 0.74rem; cursor: pointer; text-align: left;
+    }
+    .rail-btn.active { border-color: var(--accent); color: var(--ink); background: var(--surface-2); }
+    .ledger-row { display: flex; justify-content: space-between; padding: 9px 0; border-bottom: 1px solid var(--rule); font-size: 0.9rem; }
+    .ledger-row.total { border-bottom: 0; font-size: 1.25rem; font-weight: 700; padding-top: 14px; }
+    .rail-box { border: 1px solid var(--rule); background: var(--ground); padding: 18px; margin-top: 14px; }
+    .msg-banner { padding: 10px 14px; border: 1px solid var(--rule); margin-bottom: 14px; display: none; font-size: 0.88rem; }
+    .msg-banner.show { display: block; }
+    .msg-banner.err { border-color: var(--fail); color: #ffb5b5; background: var(--fail-soft); }
+    .msg-banner.ok { border-color: var(--ok); color: #a8efd2; background: var(--ok-soft); }
+    @media (max-width: 900px) { .ck-layout { grid-template-columns: 1fr; } }
+    @media (max-width: 680px) { .tier-selector, .rail-tabs { grid-template-columns: repeat(2, 1fr); } }
+  </style>
+</head>
+<body>
+  <header class="site-header" aria-label="Primary navigation">
+    <a class="brand-lockup" href="/"><img src="/assets/logo.svg" alt="" width="24" height="24"><span>VERNIER</span></a>
+    <nav class="nav-links">
+      <a href="/curriculum">Curriculum</a>
+      <a href="/pricing">Packages</a>
+      <a href="/course" class="keep-mobile">Portal</a>
+      <a href="/login" id="ck-auth-nav">Sign in</a>
+    </nav>
+  </header>
+
+  <main class="ck-page">
+    <div class="container">
+      <div class="spec-label"><span class="dot"></span><span>CHECKOUT HUB // SERVER-AUTHORITATIVE ENTITLEMENT</span></div>
+      <h1 class="display-lg" style="margin-top:8px;">Configure Package &amp; Settlement Rail</h1>
+
+      <div class="ck-layout">
+        <!-- LEFT COLUMN: SELECTION + STUDENT IDENTITY + PAYMENT RAILS -->
+        <section class="spec-card" aria-label="Checkout configuration">
+          <div id="ck-banner" class="msg-banner" role="status"></div>
+
+          <div class="spec-label" style="margin-bottom:8px;">1 // SELECT TRAINING PACKAGE</div>
+          <div class="tier-selector" id="tier-selector">
+            <button type="button" class="tier-pill active" data-slug="starter-pass"><span class="mono" style="font-size:11px;">LEVEL 1</span><strong class="num">$1</strong><span style="font-size:12px;">Spark</span></button>
+            <button type="button" class="tier-pill" data-slug="price-action"><span class="mono" style="font-size:11px;">LEVEL 2</span><strong class="num">$25</strong><span style="font-size:12px;">Foundation</span></button>
+            <button type="button" class="tier-pill" data-slug="pro-orderflow"><span class="mono" style="font-size:11px;">LEVEL 3</span><strong class="num">$100</strong><span style="font-size:12px;">Pro Desk</span></button>
+            <button type="button" class="tier-pill" data-slug="institutional-vault"><span class="mono" style="font-size:11px;">LEVEL 4</span><strong class="num">$500</strong><span style="font-size:12px;">Vault</span></button>
+          </div>
+
+          <div class="spec-label" style="margin:18px 0 8px;">2 // STUDENT SEAT IDENTITY</div>
+          <div id="signed-in-card" class="rail-box" hidden style="margin-top:0;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+            <div>
+              <div class="mono" style="font-size:11px;color:var(--ok);">SIGNED IN SESSION ACTIVE</div>
+              <div id="signed-in-user" style="font-weight:600;margin-top:2px;"></div>
+            </div>
+            <a class="btn" style="min-height:34px;font-size:11px;" href="/login">Switch Account</a>
+          </div>
+
+          <div id="guest-fields" class="field-grid">
+            <div class="input-group">
+              <label for="ck-email">Student Email (Unlocks Portal)</label>
+              <input class="input-control" id="ck-email" type="email" placeholder="trader@example.com">
+            </div>
+            <div class="input-group">
+              <label for="ck-name">Full Name</label>
+              <input class="input-control" id="ck-name" type="text" placeholder="Full Name for Certificate">
+            </div>
+            <div class="input-group" style="grid-column:1 / -1;">
+              <label for="ck-password">Create Portal Password (Optional — Auto-generated if blank)</label>
+              <input class="input-control" id="ck-password" type="password" placeholder="Set password for future /course login">
+            </div>
+          </div>
+
+          <div class="spec-label" style="margin:22px 0 6px;">3 // CHOOSE PAYMENT RAIL</div>
+          <div class="rail-tabs" id="rail-tabs">
+            <button type="button" class="rail-btn active" data-provider="sandbox"><strong>SANDBOX TEST</strong><br><span>Approve / Decline</span></button>
+            <button type="button" class="rail-btn" data-provider="crypto_manual"><strong>CRYPTO DIRECT</strong><br><span>USDT / USDC / Zero Decline</span></button>
+            <button type="button" class="rail-btn" data-provider="local_pk"><strong>PK LOCAL RAILS</strong><br><span>PKR Bank / SadaPay</span></button>
+            <button type="button" class="rail-btn" data-provider="whop"><strong>GLOBAL CARDS (WHOP)</strong><br><span id="whop-tab-status">Phase 6 Plug</span></button>
+          </div>
+
+          <div class="rail-box" id="rail-details">
+            <div id="rail-sandbox-panel">
+              <div style="font-weight:600;">Developer Sandbox Card &amp; Webhook Simulator</div>
+              <p style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Test full SQLite order creation, instant tier unlocking, decline handling, or refund revocation right now with zero real money.</p>
+              <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                <button type="button" class="btn btn-commit" id="btn-sbx-approve">Simulate Approved Payment</button>
+                <button type="button" class="btn" id="btn-sbx-decline">Simulate Card Decline (402)</button>
+              </div>
+            </div>
+
+            <div id="rail-crypto-panel" hidden>
+              <div style="font-weight:600;">Direct Stablecoin Settlement (US / Global Zero Decline)</div>
+              <p style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Choose network, generate your locked USD quote &amp; order reference, then submit the TxID hash.</p>
+              <div class="input-group" style="max-width:280px;margin-bottom:12px;">
+                <label for="crypto-network">Stablecoin Network</label>
+                <select class="input-control" id="crypto-network">
+                  <option value="USDT_TRC20">USDT (TRC20 — Low Fee)</option>
+                  <option value="USDT_BEP20">USDT (BEP20 / BSC)</option>
+                  <option value="USDC_SOL">USDC (Solana)</option>
+                </select>
+              </div>
+              <button type="button" class="btn btn-commit" id="btn-create-crypto">Generate Wallet Invoice &amp; Continue</button>
+            </div>
+
+            <div id="rail-pk-panel" hidden>
+              <div style="font-weight:600;">Pakistan Local Bank / SadaPay / NayaPay Transfer</div>
+              <p style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Creates a locked PKR order reference at the configured USD/PKR rate and directs to transfer proof submission.</p>
+              <button type="button" class="btn btn-commit" id="btn-create-pk">Generate PKR Invoice &amp; Continue</button>
+            </div>
+
+            <div id="rail-whop-panel" hidden>
+              <div style="font-weight:600;">Whop Embedded Global Checkout (US MoR — Phase 6)</div>
+              <p id="whop-status-copy" style="margin:6px 0 12px;color:var(--muted);font-size:0.86rem;">Checking Whop activation flag...</p>
+              <div id="whop-embed-root"></div>
+              <button type="button" class="btn btn-commit" id="btn-create-whop" style="margin-top:8px;">Launch Embedded Whop Checkout</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- RIGHT COLUMN: LIVE QUOTE & COUPON LEDGER -->
+        <aside class="spec-card featured" aria-label="Order summary">
+          <div class="spec-label"><span class="dot"></span><span>SERVER QUOTE SUMMARY</span></div>
+          <h2 id="sum-pkg-name" style="margin:10px 0 4px;font-size:1.35rem;">Tier 1: Execution Blueprint</h2>
+          <div class="mono" id="sum-pkg-sub" style="font-size:12px;color:var(--muted);">Level 1 Access</div>
+
+          <div style="margin:18px 0;">
+            <div class="ledger-row"><span>List Package Price</span><span class="num" id="q-gross">$1.00</span></div>
+            <div class="ledger-row"><span>Prior Tier Upgrade Credit</span><span class="num" id="q-credit" style="color:var(--ok);">-$0.00</span></div>
+            <div class="ledger-row"><span>Promo Coupon Discount</span><span class="num" id="q-discount" style="color:var(--ok);">-$0.00</span></div>
+            <div class="ledger-row total"><span>Due Today (USD)</span><span class="num" id="q-final" style="color:var(--accent);">$1.00</span></div>
+            <div class="mono" id="q-pkr" style="font-size:11px;color:var(--muted);text-align:right;margin-top:4px;"></div>
+          </div>
+
+          <div class="input-group">
+            <label for="ck-coupon">Promo Code (Try TEST100, FOUNDER20, DESK10)</label>
+            <div style="display:flex;gap:8px;">
+              <input class="input-control mono" id="ck-coupon" type="text" placeholder="FOUNDER20">
+              <button type="button" class="btn" id="btn-apply-coupon" style="min-height:42px;">Apply</button>
+            </div>
+          </div>
+
+          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--rule);font-size:0.8rem;color:var(--muted);">
+            <div class="mono" style="color:var(--ink);margin-bottom:4px;">GUARANTEED ENTITLEMENT RULES:</div>
+            <p style="margin:0;">Instant entitlement sync via SQLite transactions. Coupon <code>TEST100</code> settles at $0.00 immediately so you can verify course unlocking in 1 click.</p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://js.whop.com/static/checkout/loader.js" async defer></script>
+  <script type="module" src="/js/checkout.js"></script>
+</body>
+</html>

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Account, Billing &amp; Certificates — VERNIER</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/logo.svg">
+  <link rel="stylesheet" href="/styles/tokens.css">
+  <link rel="stylesheet" href="/styles/app.css">
+</head>
+<body class="app-body">
+  <div class="app-shell">
+    <aside class="app-side" aria-label="Account navigation">
+      <a class="app-brand" href="/"><img src="/assets/logo.svg" alt="" width="20" height="20"><span>VERNIER DESK</span></a>
+      <nav aria-label="Workspace links">
+        <ul class="app-nav">
+          <li><a href="/course"><span>Course Portal</span></a></li>
+          <li><a href="/dashboard" aria-current="page"><span>Account &amp; Billing</span></a></li>
+          <li><a href="/pricing"><span>Compare Tiers</span></a></li>
+          <li><a href="/checkout?tier=starter-pass"><span>Checkout Hub</span></a></li>
+          <li><a href="/verify"><span>Verify Registry</span></a></li>
+        </ul>
+      </nav>
+      <div style="margin-top:auto;padding:10px;border-top:1px solid var(--app-line);display:grid;gap:8px;">
+        <button type="button" class="app-btn" id="btn-logout">Sign Out</button>
+      </div>
+    </aside>
+
+    <div class="app-col">
+      <header class="app-top">
+        <strong style="font-family:var(--font-display);">Student Account &amp; Entitlement Ledger</strong>
+        <a class="app-btn commit" href="/course" style="margin-left:auto;">Open Course Portal</a>
+      </header>
+
+      <main class="app-main" id="dash-root">
+        <div class="page-head"><h1>Loading Account Profile...</h1></div>
+      </main>
+    </div>
+  </div>
+
+  <script type="module">
+    const root = document.getElementById('dash-root');
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+    document.getElementById('btn-logout').addEventListener('click', async () => {
+      await fetch('/api/v1/auth/logout', { method: 'POST' });
+      location.href = '/login';
+    });
+
+    async function load() {
+      const meRes = await fetch('/api/v1/auth/me');
+      const { user } = await meRes.json();
+      if (!user) {
+        location.href = '/login?next=/dashboard';
+        return;
+      }
+
+      const [ovRes, pkgRes] = await Promise.all([fetch('/api/v1/course/overview'), fetch('/api/v1/catalog/packages')]);
+      const ov = await ovRes.json();
+      const { packages } = await pkgRes.json();
+
+      const nextUpgrade = packages.find((p) => !p.owned);
+      const upgradeBanner = nextUpgrade
+        ? `<div class="app-panel lit-region" style="padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+            <div>
+              <div class="status-badge lit">UPGRADE CREDIT ACTIVE: $${(user.highest_paid_cents / 100).toFixed(0)} DEDUCTED</div>
+              <div style="font-weight:600;margin-top:6px;">Next tier available: ${esc(nextUpgrade.name)} — Pay only <span class="num">$${(nextUpgrade.effective_price_cents / 100).toFixed(2)}</span></div>
+            </div>
+            <a class="app-btn commit" href="/checkout?tier=${encodeURIComponent(nextUpgrade.slug)}">Upgrade Now</a>
+          </div>`
+        : `<div class="app-panel" style="padding:14px 16px;margin-bottom:16px;"><span class="status-badge ok">FULL VAULT TIER 4 ACTIVE</span> <span class="meta" style="margin-left:8px;">All 13 modules &amp; 1-on-1 desk audits unlocked.</span></div>`;
+
+      const orderRows = (ov.orders || []).map((o) => `
+        <tr>
+          <td class="mono" title="${esc(o.order_ref)}">${esc(o.order_ref)}</td>
+          <td title="${esc(o.package_name)}">${esc(o.package_name)}</td>
+          <td class="mono">${esc(o.provider)}</td>
+          <td><span class="status-badge ${o.status === 'paid' ? 'ok' : o.status === 'failed' || o.status === 'refunded' ? 'fail' : 'warn'}">${esc(o.status.toUpperCase())}</span></td>
+          <td class="num">$${(o.final_cents / 100).toFixed(2)}</td>
+          <td>${o.status === 'pending' || o.status === 'awaiting_review' ? `<a class="app-btn" href="/checkout/pending?ref=${encodeURIComponent(o.order_ref)}">Proof / Status</a>` : `<a class="app-btn" href="/checkout/success?ref=${encodeURIComponent(o.order_ref)}">Receipt</a>`}</td>
+        </tr>
+      `).join('');
+
+      const certRows = (ov.certificates || []).map((c) => `
+        <div class="app-panel" style="padding:12px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <div>
+            <div class="mono" style="font-weight:700;">${esc(c.serial_code)}</div>
+            <div class="meta">Tier ${c.tier_level} Certificate · Issued ${esc(c.issued_at)}</div>
+          </div>
+          <a class="app-btn" href="/verify?serial=${encodeURIComponent(c.serial_code)}">Public Verify Plate</a>
+        </div>
+      `).join('');
+
+      root.innerHTML = `
+        <div class="page-head">
+          <div>
+            <h1>${esc(user.full_name)} · Level ${user.max_tier_level} Seat</h1>
+            <div class="meta">${esc(user.email)} · Progress: <span class="num">${ov.stats.completionPct}%</span> (${ov.stats.completedLessons}/${ov.stats.unlockedLessons} lessons)</div>
+          </div>
+          ${user.role === 'admin' ? '<a class="app-btn" href="/admin">Open Instructor Admin Console</a>' : ''}
+        </div>
+
+        ${upgradeBanner}
+
+        <div class="kpi-strip">
+          <div class="kpi-cell"><div class="meta">HIGHEST TIER PAID</div><div class="k-val num">$${(user.highest_paid_cents / 100).toFixed(2)}</div></div>
+          <div class="kpi-cell"><div class="meta">COMPLETED LESSONS</div><div class="k-val num">${ov.stats.completedLessons}</div></div>
+          <div class="kpi-cell"><div class="meta">JOURNAL TRADES</div><div class="k-val num">${ov.stats.totalTrades}</div></div>
+          <div class="kpi-cell"><div class="meta">NET JOURNAL R</div><div class="k-val num">${ov.stats.netR >= 0 ? '+' : ''}${ov.stats.netR}R</div></div>
+        </div>
+
+        <div style="display:grid;gap:18px;">
+          <section class="app-panel">
+            <div class="app-panel-head"><span>Orders &amp; Settlement Receipts</span><a class="app-btn" href="/checkout?tier=starter-pass">New Purchase</a></div>
+            <div class="table-wrap" style="border:0;">
+              <table class="app-table">
+                <thead><tr><th>Order Ref</th><th>Package</th><th>Rail</th><th>Status</th><th class="num">Paid (USD)</th><th>Action</th></tr></thead>
+                <tbody>${orderRows || '<tr><td colspan="6" class="meta">No orders yet. Start with $1 Spark Blueprint.</td></tr>'}</tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="app-panel" style="padding:14px 16px;display:grid;gap:12px;">
+            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+              <strong>Academy Certificates</strong>
+              <button type="button" class="app-btn commit" id="btn-claim-cert">Claim / Verify Certificate</button>
+            </div>
+            <div id="cert-msg" class="meta"></div>
+            ${certRows || '<div class="meta">Reach Tier 2+ and complete unlocked modules (or test with admin review) to mint a public credential serial.</div>'}
+          </section>
+
+          <section class="app-panel" style="padding:14px 16px;">
+            <strong style="display:block;margin-bottom:12px;">Profile &amp; Community Handles</strong>
+            <form id="profile-form" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;align-items:end;">
+              <div><label class="meta" for="p-name">Full Name</label><input class="app-input" id="p-name" style="width:100%;" value="${esc(user.full_name)}"></div>
+              <div><label class="meta" for="p-country">Country</label><input class="app-input" id="p-country" style="width:100%;" value="${esc(user.country)}"></div>
+              <div><label class="meta" for="p-discord">Discord Handle</label><input class="app-input" id="p-discord" style="width:100%;" value="${esc(user.discord_handle || '')}" placeholder="username#0001"></div>
+              <div><label class="meta" for="p-telegram">Telegram Handle</label><input class="app-input" id="p-telegram" style="width:100%;" value="${esc(user.telegram_handle || '')}" placeholder="@handle"></div>
+              <div><button type="submit" class="app-btn commit">Save Profile</button></div>
+            </form>
+            <div id="prof-msg" class="meta" style="margin-top:8px;"></div>
+          </section>
+        </div>
+      `;
+
+      document.getElementById('btn-claim-cert')?.addEventListener('click', async () => {
+        const res = await fetch('/api/v1/course/certificates/claim', { method: 'POST' });
+        const data = await res.json();
+        const msgEl = document.getElementById('cert-msg');
+        if (!res.ok) {
+          msgEl.textContent = data.error || 'Cannot claim certificate yet.';
+          msgEl.style.color = 'var(--fail)';
+          return;
+        }
+        location.reload();
+      });
+
+      document.getElementById('profile-form')?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const res = await fetch('/api/v1/auth/profile', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fullName: document.getElementById('p-name').value,
+            country: document.getElementById('p-country').value,
+            discordHandle: document.getElementById('p-discord').value,
+            telegramHandle: document.getElementById('p-telegram').value,
+          }),
+        });
+        document.getElementById('prof-msg').textContent = res.ok ? 'Profile saved to SQLite.' : 'Failed to update profile.';
+      });
+    }
+    load();
+  </script>
+</body>
+</html>

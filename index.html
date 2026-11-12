@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>APEX TRADING ACADEMY — Course & Embedded Checkout Demo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Official Whop Checkout Loader (for Real Plan ID mode) -->
+  <script async defer src="https://js.whop.com/static/checkout/loader.js"></script>
+  <style>
+    :root {
+      --bg: #080b11;
+      --surface: #101520;
+      --surface-2: #161d2b;
+      --border: rgba(255, 255, 255, 0.09);
+      --text: #f3f6fc;
+      --muted: #94a3b8;
+      --emerald: #10b981;
+      --emerald-glow: rgba(16, 185, 129, 0.22);
+      --gold: #f59e0b;
+      --blue: #3b82f6;
+      --danger: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Top Demo Control Bar */
+    .demo-banner {
+      background: linear-gradient(90deg, #0f172a, #1e293b, #0f172a);
+      border-bottom: 1px solid rgba(16, 185, 129, 0.35);
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      backdrop-filter: blur(12px);
+    }
+
+    .demo-banner-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .pulse-dot {
+      width: 9px;
+      height: 9px;
+      background: var(--emerald);
+      border-radius: 50%;
+      box-shadow: 0 0 10px var(--emerald);
+      animation: pulse 1.8s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.3); opacity: 0.6; }
+    }
+
+    .view-switcher {
+      display: flex;
+      gap: 8px;
+      background: #080b11;
+      padding: 4px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+    }
+
+    .switch-btn {
+      background: transparent;
+      color: var(--muted);
+      border: none;
+      padding: 7px 14px;
+      border-radius: 7px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .switch-btn.active {
+      background: var(--emerald);
+      color: #04130d;
+    }
+
+    /* Navigation */
+    nav {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-weight: 800;
+      font-size: 1.25rem;
+      letter-spacing: -0.03em;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-badge {
+      background: linear-gradient(135deg, var(--emerald), #059669);
+      color: #03150e;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 800;
+      padding: 4px 9px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+    }
+
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    /* Hero Section */
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px 24px 80px;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 40px;
+      align-items: center;
+      margin-top: 24px;
+    }
+
+    @media (max-width: 920px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .tag-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #34d399;
+      font-size: 0.82rem;
+      font-weight: 600;
+      margin-bottom: 18px;
+    }
+
+    h1 {
+      font-size: clamp(2.2rem, 4vw, 3.35rem);
+      font-weight: 800;
+      line-height: 1.12;
+      letter-spacing: -0.03em;
+      margin-bottom: 18px;
+    }
+
+    .gradient-text {
+      background: linear-gradient(90deg, #34d399, #60a5fa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-sub {
+      color: var(--muted);
+      font-size: 1.08rem;
+      margin-bottom: 28px;
+      max-width: 580px;
+    }
+
+    .cta-group {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin-bottom: 26px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #10b981, #059669);
+      color: #03150e;
+      font-weight: 700;
+      font-size: 1rem;
+      padding: 15px 28px;
+      border-radius: 12px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 10px 30px var(--emerald-glow);
+      transition: transform 0.18s ease, box-shadow 0.18s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 14px 36px rgba(16, 185, 129, 0.35);
+    }
+
+    .btn-secondary {
+      background: var(--surface-2);
+      color: var(--text);
+      font-weight: 600;
+      font-size: 0.95rem;
+      padding: 15px 22px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .btn-secondary:hover {
+      background: #1f293d;
+    }
+
+    .trust-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      font-size: 0.84rem;
+      color: var(--muted);
+      padding-top: 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Right Pricing Card */
+    .pricing-card {
+      background: linear-gradient(180deg, #131b2e 0%, #0d121d 100%);
+      border: 1px solid rgba(16, 185, 129, 0.35);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+      position: relative;
+    }
+
+    .popular-badge {
+      position: absolute;
+      top: -12px;
+      right: 24px;
+      background: var(--gold);
+      color: #1a1002;
+      font-size: 0.74rem;
+      font-weight: 800;
+      padding: 4px 12px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .price-row {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+      margin: 14px 0 6px;
+    }
+
+    .price-big {
+      font-size: 2.6rem;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .price-strike {
+      color: var(--muted);
+      text-decoration: line-through;
+      font-size: 1.1rem;
+    }
+
+    .feature-list {
+      list-style: none;
+      margin: 20px 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 11px;
+      font-size: 0.92rem;
+    }
+
+    .feature-list li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .check-icon {
+      color: var(--emerald);
+      font-weight: 800;
+    }
+
+    .payment-badges {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 14px;
+    }
+
+    .pay-pill {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      color: #cbd5e1;
+      font-weight: 600;
+    }
+
+    /* Curriculum / Unlocked Course Portal */
+    .section-header {
+      margin-top: 64px;
+      margin-bottom: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .course-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(270px, 1fr));
+      gap: 18px;
+    }
+
+    .module-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+
+    .module-card.unlocked {
+      border-color: rgba(16, 185, 129, 0.5);
+      background: linear-gradient(180deg, rgba(16, 185, 129, 0.07), var(--surface));
+    }
+
+    .lock-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 6px;
+      margin-bottom: 12px;
+      background: rgba(239, 68, 68, 0.14);
+      color: #f87171;
+    }
+
+    .module-card.unlocked .lock-tag {
+      background: rgba(16, 185, 129, 0.18);
+      color: #34d399;
+    }
+
+    /* Checkout Modal Overlay */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(3, 6, 12, 0.82);
+      backdrop-filter: blur(8px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 999;
+      padding: 16px;
+    }
+
+    .modal-backdrop.open {
+      display: flex;
+    }
+
+    .checkout-modal {
+      background: #ffffff;
+      color: #0f172a;
+      width: 100%;
+      max-width: 480px;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 30px 90px rgba(0, 0, 0, 0.75);
+      animation: popIn 0.22s ease-out;
+    }
+
+    @keyframes popIn {
+      from { transform: translateY(14px) scale(0.97); opacity: 0; }
+      to { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    .modal-top {
+      background: #f8fafc;
+      padding: 18px 22px;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .modal-top-title {
+      font-weight: 700;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #0f172a;
+    }
+
+    .us-routing-badge {
+      background: #dcfce7;
+      color: #166534;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 999px;
+    }
+
+    .close-modal {
+      background: none;
+      border: none;
+      font-size: 1.3rem;
+      cursor: pointer;
+      color: #64748b;
+    }
+
+    .modal-body {
+      padding: 22px;
+    }
+
+    .order-summary-line {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 14px;
+      margin-bottom: 16px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* Express 1-Click Buttons (Apple Pay / Google Pay / Cash App) */
+    .express-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+
+    .express-btn {
+      padding: 12px;
+      border-radius: 10px;
+      border: none;
+      font-weight: 700;
+      font-size: 0.92rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: opacity 0.15s;
+    }
+
+    .express-btn:hover {
+      opacity: 0.9;
+    }
+
+    .apple-pay-btn {
+      background: #000000;
+      color: #ffffff;
+    }
+
+    .gpay-btn {
+      background: #1a73e8;
+      color: #ffffff;
+    }
+
+    .divider {
+      text-align: center;
+      font-size: 0.76rem;
+      color: #64748b;
+      margin: 12px 0;
+      position: relative;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 4px;
+    }
+
+    .form-input {
+      width: 100%;
+      padding: 11px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-family: 'Inter', sans-serif;
+      color: #0f172a;
+      background: #fff;
+    }
+
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .pay-submit-btn {
+      width: 100%;
+      background: #10b981;
+      color: #ffffff;
+      border: none;
+      padding: 14px;
+      border-radius: 10px;
+      font-weight: 700;
+      font-size: 0.98rem;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.15s;
+    }
+
+    .pay-submit-btn:hover {
+      background: #059669;
+    }
+
+    .modal-footer-note {
+      margin-top: 14px;
+      font-size: 0.74rem;
+      color: #64748b;
+      text-align: center;
+      line-height: 1.4;
+    }
+
+    /* Seller Pakistan Payout Dashboard View */
+    .seller-panel {
+      display: none;
+      margin-top: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px;
+    }
+
+    .seller-panel.active {
+      display: block;
+    }
+
+    .flow-steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+      margin: 22px 0;
+    }
+
+    .flow-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 18px;
+    }
+
+    .flow-box.highlighted {
+      border-color: var(--emerald);
+      box-shadow: 0 0 25px rgba(16, 185, 129, 0.14);
+    }
+
+    .stat-amount {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.8rem;
+      font-weight: 800;
+      color: #34d399;
+      margin: 6px 0;
+    }
+
+    .payout-methods-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .payout-card {
+      background: #0b101b;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .payout-card:hover {
+      border-color: var(--emerald);
+    }
+
+    .real-whop-tester {
+      margin-top: 28px;
+      padding: 20px;
+      border-radius: 14px;
+      background: rgba(59, 130, 246, 0.08);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #064e3b;
+      border: 1px solid #10b981;
+      color: #ecfdf5;
+      padding: 16px 22px;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      box-shadow: 0 15px 40px rgba(0,0,0,0.5);
+      display: none;
+      z-index: 1000;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Sticky Interactive Demo Bar -->
+  <div class="demo-banner">
+    <div class="demo-banner-left">
+      <span class="pulse-dot"></span>
+      <span>LIVE INTERACTIVE DEMO — Test what your <strong>USA Student</strong> sees vs. what <strong>You (in Pakistan)</strong> see!</span>
+    </div>
+    <div class="view-switcher">
+      <button class="switch-btn active" id="btnStudentView" onclick="switchView('student')">🇺🇸 USA Student Website View</button>
+      <button class="switch-btn" id="btnSellerView" onclick="switchView('seller')">🇵🇰 Your Pakistan Payout Dashboard (<span id="navBalance">$0.00</span>)</button>
+    </div>
+  </div>
+
+  <!-- Navigation -->
+  <nav>
+    <div class="logo">
+      <span class="logo-badge">APEX</span>
+      <span>TRADING MASTERCLASS</span>
+    </div>
+    <div class="nav-actions">
+      <span id="studentStatusBadge" style="font-size:0.82rem; color:var(--muted);">Status: 🔒 Guest (Not Enrolled)</span>
+      <button class="btn-primary" style="padding:10px 18px; font-size:0.88rem;" onclick="openCheckoutModal(197, 'Full Institutional Trading Mentorship')">
+        Test Embedded Checkout ($197)
+      </button>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- STUDENT VIEW -->
+    <div id="studentViewSection">
+      <div class="hero">
+        <div>
+          <div class="tag-pill">⚡ Instant Access • Embedded US Checkout (Zero Card Declines)</div>
+          <h1>Master Institutional <span class="gradient-text">Price Action & Liquidity</span></h1>
+          <p class="hero-sub">
+            Click either checkout button below to test the exact embedded popup experience your USA & international students get—without ever leaving your website.
+          </p>
+          <div class="cta-group">
+            <button class="btn-primary" onclick="openCheckoutModal(197, 'Apex Institutional Trading Course')">
+              🚀 Enroll Now — $197 (Click to Test Popup)
+            </button>
+            <button class="btn-secondary" onclick="openCheckoutModal(1, '$1 Live Payment Test')">
+              🧪 Test $1.00 Checkout Flow
+            </button>
+          </div>
+          <div class="trust-row">
+            <div class="trust-item">✅ <strong>US Domestic Acquiring</strong> (Chase, BoA, Amex, Wells Fargo approved)</div>
+            <div class="trust-item">✅ <strong>1-Click Apple Pay & Google Pay</strong></div>
+            <div class="trust-item">✅ <strong>Instant Course Unlock</strong></div>
+          </div>
+        </div>
+
+        <!-- Pricing Card -->
+        <div class="pricing-card">
+          <div class="popular-badge">Most Popular</div>
+          <div style="font-size:0.85rem; color:var(--muted); font-weight:600;">LIFETIME ACCESS + LIVE SIGNALS</div>
+          <div class="price-row">
+            <span class="price-big">$197</span>
+            <span class="price-strike">$497</span>
+            <span style="font-size:0.8rem; color:#34d399; font-weight:700;">ONE-TIME</span>
+          </div>
+          <p style="font-size:0.85rem; color:var(--muted);">Instant automatic access the second your payment completes.</p>
+
+          <ul class="feature-list">
+            <li><span class="check-icon">✓</span> 42 HD Step-by-Step Trading Video Modules</li>
+            <li><span class="check-icon">✓</span> Daily NY & London Session Chart Breakdowns</li>
+            <li><span class="check-icon">✓</span> Private VIP Discord & Telegram Community Access</li>
+            <li><span class="check-icon">✓</span> Exact Risk Management & Prop-Firm Passing Blueprint</li>
+          </ul>
+
+          <button class="btn-primary" style="width:100%; justify-content:center;" onclick="openCheckoutModal(197, 'Apex Institutional Trading Course')">
+            Unlock Instant Access →
+          </button>
+
+          <div class="payment-badges">
+            <span class="pay-pill"> Apple Pay</span>
+            <span class="pay-pill">G Pay</span>
+            <span class="pay-pill">💳 Visa / Mastercard / Amex</span>
+            <span class="pay-pill">💲 Cash App</span>
+            <span class="pay-pill">🪙 USDT Crypto</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Course Modules Section (Unlocks Automatically After Test Payment!) -->
+      <div class="section-header">
+        <div>
+          <h2 style="font-size:1.6rem; font-weight:800;">Course Modules & Student Portal</h2>
+          <p style="color:var(--muted); font-size:0.92rem;">Complete a test payment above and watch these locked modules unlock automatically in 1 second!</p>
+        </div>
+      </div>
+
+      <div class="course-grid" id="courseModulesGrid">
+        <div class="module-card" id="mod1">
+          <div class="lock-tag" id="tag1">🔒 LOCKED — ENROLL TO WATCH</div>
+          <h3 style="margin-bottom:6px;">Module 1: Market Structure & Liquidity Sweeps</h3>
+          <p style="color:var(--muted); font-size:0.88rem;">How smart money hunts retail stop-losses before every major NY session move.</p>
+        </div>
+        <div class="module-card" id="mod2">
+          <div class="lock-tag" id="tag2">🔒 LOCKED — ENROLL TO WATCH</div>
+          <h3 style="margin-bottom:6px;">Module 2: High-Probability Order Blocks & FVG</h3>
+          <p style="color:var(--muted); font-size:0.88rem;">Pinpointing sniper entries with 1:5+ Risk-to-Reward ratios on Gold, NQ, and EURUSD.</p>
+        </div>
+        <div class="module-card" id="mod3">
+          <div class="lock-tag" id="tag3">🔒 LOCKED — ENROLL TO WATCH</div>
+          <h3 style="margin-bottom:6px;">Module 3: Passing $100K Prop Firm Evaluations</h3>
+          <p style="color:var(--muted); font-size:0.88rem;">Exact daily drawdown rules and position sizing calculator included.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAKISTAN SELLER PAYOUT VIEW -->
+    <div class="seller-panel" id="sellerViewSection">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+        <div>
+          <span class="tag-pill">🇵🇰 Your Seller Backend (Whop Dashboard Simulation)</span>
+          <h2 style="font-size:1.75rem; font-weight:800;">How Your Money Moves From USA Student → Pakistan</h2>
+          <p style="color:var(--muted); font-size:0.92rem;">Every time a student pays on your website, here is what happens behind the scenes:</p>
+        </div>
+        <button class="btn-primary" onclick="openCheckoutModal(197, 'Apex Institutional Trading Course')">
+          + Simulate Another US Student Sale ($197)
+        </button>
+      </div>
+
+      <div class="flow-steps">
+        <div class="flow-box highlighted">
+          <div style="font-size:0.78rem; color:var(--muted); font-weight:700;">STEP 1 • INSTANT (0 SECONDS)</div>
+          <div style="font-weight:700; margin-top:4px;">🇺🇸 US Student Pays on Your Site</div>
+          <div class="stat-amount" id="sellerGrossAmount">$0.00</div>
+          <p style="font-size:0.82rem; color:var(--muted);">
+            Processed domestically in the USA via Whop/Stripe. Student's US bank sees a local US charge—<strong>0% foreign block rate</strong>.
+          </p>
+        </div>
+
+        <div class="flow-box highlighted">
+          <div style="font-size:0.78rem; color:var(--muted); font-weight:700;">STEP 2 • YOUR WHOP BALANCE (2–5 DAYS CLEARING)</div>
+          <div style="font-weight:700; margin-top:4px;">🏦 Net Earnings in Your Whop Wallet</div>
+          <div class="stat-amount" id="sellerNetAmount">$0.00</div>
+          <p style="font-size:0.82rem; color:var(--muted);">
+            Shows in your Whop dashboard immediately! After ~2.7% + $0.30 processing fee, funds settle and become ready to withdraw in 2–5 business days.
+          </p>
+        </div>
+
+        <div class="flow-box highlighted">
+          <div style="font-size:0.78rem; color:var(--muted); font-weight:700;">STEP 3 • WITHDRAW TO PAKISTAN</div>
+          <div style="font-weight:700; margin-top:4px;">🇵🇰 Cash Out to Your Bank or USDT</div>
+          <div class="stat-amount" id="sellerPkrAmount">PKR 0</div>
+          <p style="font-size:0.82rem; color:var(--muted);">
+            Withdraw anytime via <strong>USDT Crypto (Minutes)</strong>, <strong>Direct Pakistani Bank IBAN (1–3 Days)</strong>, or <strong>Payoneer (1–2 Days)</strong>.
+          </p>
+        </div>
+      </div>
+
+      <h3 style="margin-top:24px; margin-bottom:8px;">Choose How You Want to Withdraw in Pakistan (Click to Test Withdrawal):</h3>
+      <div class="payout-methods-grid">
+        <div class="payout-card" onclick="simulateWithdrawal('USDT (TRC20 / Binance)')">
+          <div style="font-weight:700; color:#34d399;">⚡ Option 1: Crypto (USDT)</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-top:4px;">Arrives in Binance/OKX in <strong>15–60 mins</strong>. Sell on P2P to Meezan / HBL / JazzCash in 5 mins.</div>
+        </div>
+        <div class="payout-card" onclick="simulateWithdrawal('Direct Pakistani Bank IBAN (Meezan / HBL / UBL / SadaPay)')">
+          <div style="font-weight:700; color:#60a5fa;">🏦 Option 2: Direct Pakistan Bank IBAN</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-top:4px;">Sent straight to your local PKR bank account via Whop Payouts in <strong>1–3 business days</strong>.</div>
+        </div>
+        <div class="payout-card" onclick="simulateWithdrawal('Payoneer USD Account')">
+          <div style="font-weight:700; color:#f59e0b;">💳 Option 3: Payoneer</div>
+          <div style="font-size:0.82rem; color:var(--muted); margin-top:4px;">Transfer to Payoneer in <strong>1–2 business days</strong>, then instant withdrawal to JazzCash or local bank.</div>
+        </div>
+      </div>
+
+      <!-- Real Whop Plan ID Plug-In Box -->
+      <div class="real-whop-tester">
+        <h3 style="font-size:1.05rem; margin-bottom:6px;">🔌 Want to Test With Your Actual Live Whop Account ($1 Test)?</h3>
+        <p style="font-size:0.86rem; color:var(--muted); margin-bottom:12px;">
+          1. Go to <strong>whop.com/sell</strong> (free, takes 2 mins) and create a product for <strong>$1.00</strong>.<br>
+          2. Copy your <strong>Plan ID</strong> (looks like <code>plan_XXXXXXXXX</code>) and paste it below to load the real live Whop checkout iframe right on this page:
+        </p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <input type="text" id="realPlanIdInput" placeholder="Paste your Whop Plan ID (e.g. plan_abc123xyz)" style="flex:1; min-width:240px; padding:11px 14px; border-radius:8px; border:1px solid var(--border); background:#080b11; color:#fff; font-family:'JetBrains Mono', monospace; font-size:0.86rem;" />
+          <button class="btn-primary" style="padding:11px 20px; font-size:0.88rem;" onclick="launchRealWhopEmbed()">
+            Load Live Whop Plan ID
+          </button>
+        </div>
+        <div id="realWhopEmbedContainer" style="margin-top:16px;"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- EMBEDDED CHECKOUT MODAL (Simulates the exact Whop / US Stripe Embedded Modal) -->
+  <div class="modal-backdrop" id="checkoutModal">
+    <div class="checkout-modal">
+      <div class="modal-top">
+        <div class="modal-top-title">
+          <span>🔒 Whop Secure US Checkout</span>
+          <span class="us-routing-badge">🇺🇸 US Domestic Processing</span>
+        </div>
+        <button class="close-modal" onclick="closeCheckoutModal()">✕</button>
+      </div>
+
+      <div class="modal-body" id="modalCheckoutForm">
+        <div class="order-summary-line">
+          <div>
+            <div style="font-weight:700; font-size:0.95rem;" id="modalProductName">Apex Institutional Trading Course</div>
+            <div style="font-size:0.78rem; color:#64748b;">Instant Lifetime Access • Verified US Merchant</div>
+          </div>
+          <div style="font-weight:800; font-size:1.25rem; font-family:'JetBrains Mono', monospace;" id="modalPriceDisplay">$197.00</div>
+        </div>
+
+        <!-- 1-Click Express Checkout for US Students -->
+        <div style="font-size:0.75rem; font-weight:600; color:#475569; margin-bottom:6px;">1-CLICK EXPRESS CHECKOUT (NO CARD TYPING NEEDED)</div>
+        <div class="express-grid">
+          <button class="express-btn apple-pay-btn" onclick="completeSimulatedPayment('Apple Pay (US Domestic)')">
+             Pay
+          </button>
+          <button class="express-btn gpay-btn" onclick="completeSimulatedPayment('Google Pay (US Domestic)')">
+            G Pay
+          </button>
+        </div>
+
+        <div class="divider">— OR PAY WITH US / INTERNATIONAL CARD —</div>
+
+        <div class="form-group">
+          <label>Student Email Address (Course Access Sent Here)</label>
+          <input type="email" class="form-input" id="studentEmailInput" value="student.usa@gmail.com" />
+        </div>
+
+        <div class="form-group">
+          <label>Card Information (Simulated Test Card Pre-Filled)</label>
+          <input type="text" class="form-input" value="4242 •••• •••• 4242   (Visa US - Chase Bank)" readonly />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>Expiry</label>
+            <input type="text" class="form-input" value="08 / 29" readonly />
+          </div>
+          <div class="form-group">
+            <label>CVC</label>
+            <input type="text" class="form-input" value="842" readonly />
+          </div>
+        </div>
+
+        <button class="pay-submit-btn" id="payNowBtn" onclick="completeSimulatedPayment('US Visa Card (Chase)')">
+          Pay <span id="btnPayAmount">$197.00</span> & Unlock Course Instantly
+        </button>
+
+        <div class="modal-footer-note">
+          ✅ Processed by <strong>Whop Inc. (New York, USA)</strong> via Stripe US.<br>
+          Your student's bank sees a domestic US transaction — zero foreign blocks or OTP delays.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toastBox"></div>
+
+  <script>
+    let currentPrice = 197;
+    let totalGross = 0;
+    let totalNet = 0;
+    const USD_TO_PKR = 278.5;
+
+    function openCheckoutModal(price, title) {
+      currentPrice = price;
+      document.getElementById('modalProductName').textContent = title;
+      document.getElementById('modalPriceDisplay').textContent = '$' + price.toFixed(2);
+      document.getElementById('btnPayAmount').textContent = '$' + price.toFixed(2);
+      document.getElementById('checkoutModal').classList.add('open');
+    }
+
+    function closeCheckoutModal() {
+      document.getElementById('checkoutModal').classList.remove('open');
+    }
+
+    function completeSimulatedPayment(methodName) {
+      const btn = document.getElementById('payNowBtn');
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '⚡ Approving via US Domestic Gateway...';
+      btn.style.background = '#059669';
+
+      setTimeout(() => {
+        closeCheckoutModal();
+        btn.innerHTML = originalText;
+
+        // Unlock Student Course Modules immediately
+        ['mod1', 'mod2', 'mod3'].forEach((id, idx) => {
+          const card = document.getElementById(id);
+          const tag = document.getElementById('tag' + (idx + 1));
+          card.classList.add('unlocked');
+          tag.innerHTML = '✅ UNLOCKED — CLICK TO WATCH HD LESSON';
+        });
+
+        document.getElementById('studentStatusBadge').innerHTML =
+          'Status: <strong style="color:#34d399;">✅ Enrolled VIP Student (Instant Access Unlocked)</strong>';
+
+        // Update Seller Pakistan Dashboard Balance
+        totalGross += currentPrice;
+        const fee = (currentPrice * 0.027) + 0.30;
+        totalNet += Math.max(0, currentPrice - fee);
+
+        document.getElementById('navBalance').textContent = '$' + totalNet.toFixed(2);
+        document.getElementById('sellerGrossAmount').textContent = '$' + totalGross.toFixed(2);
+        document.getElementById('sellerNetAmount').textContent = '$' + totalNet.toFixed(2);
+        document.getElementById('sellerPkrAmount').textContent =
+          'PKR ' + Math.round(totalNet * USD_TO_PKR).toLocaleString();
+
+        showToast(
+          '🎉 Payment of $' + currentPrice.toFixed(2) + ' via ' + methodName +
+          ' approved in 1 sec! Course unlocked & added to your Pakistan Payout Balance.'
+        );
+      }, 650);
+    }
+
+    function switchView(view) {
+      const studentSec = document.getElementById('studentViewSection');
+      const sellerSec = document.getElementById('sellerViewSection');
+      const btnStudent = document.getElementById('btnStudentView');
+      const btnSeller = document.getElementById('btnSellerView');
+
+      if (view === 'seller') {
+        studentSec.style.display = 'none';
+        sellerSec.classList.add('active');
+        btnStudent.classList.remove('active');
+        btnSeller.classList.add('active');
+      } else {
+        studentSec.style.display = 'block';
+        sellerSec.classList.remove('active');
+        btnStudent.classList.add('active');
+        btnSeller.classList.remove('active');
+      }
+    }
+
+    function simulateWithdrawal(method) {
+      if (totalNet <= 0) {
+        showToast('💡 First click "Simulate US Student Sale" or complete a test checkout so you have balance to withdraw!');
+        return;
+      }
+      const pkr = Math.round(totalNet * USD_TO_PKR).toLocaleString();
+      showToast('🇵🇰 Withdrawal of $' + totalNet.toFixed(2) + ' (PKR ' + pkr + ') initiated via ' + method + '!');
+    }
+
+    function launchRealWhopEmbed() {
+      const planId = document.getElementById('realPlanIdInput').value.trim();
+      const container = document.getElementById('realWhopEmbedContainer');
+      if (!planId || !planId.startsWith('plan_')) {
+        showToast('⚠️ Please enter a valid Whop Plan ID starting with plan_ (from whop.com/sell)');
+        return;
+      }
+      container.innerHTML = `
+        <div style="background:#fff; border-radius:14px; padding:12px;">
+          <iframe
+            src="https://whop.com/embedded/checkout/${encodeURIComponent(planId)}/?theme=light"
+            style="width:100%; height:560px; border:none; border-radius:10px;"
+            allow="payment *"
+          ></iframe>
+        </div>
+      `;
+      showToast('✅ Loaded live Whop Checkout for ' + planId + '!');
+    }
+
+    function showToast(msg) {
+      const box = document.getElementById('toastBox');
+      box.textContent = msg;
+      box.style.display = 'block';
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        box.style.display = 'none';
+      }, 5000);
+    }
+  </script>
+</body>
+</html>
+
